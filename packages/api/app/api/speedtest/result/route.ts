@@ -7,6 +7,25 @@ const CUBA_PROVINCE_IDS = new Set([
   'CAV', 'CMG', 'LTU', 'HOL', 'GRA', 'SCU', 'GTM', 'IJV',
 ]);
 
+// Known Cuban IP ranges (ETECSA AS27725)
+const CUBAN_RANGES = [
+  { start: 0x98CE0000, end: 0x98CFFFFF }, // 152.206.0.0/15
+  { start: 0xC1640000, end: 0xC167FFFF }, // 193.100.0.0/14
+  { start: 0xBDB40000, end: 0xBDB4FFFF }, // 189.180.0.0/16
+];
+
+function ipToInt(ip: string): number {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return 0;
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
+function isCubanIP(ip: string): boolean {
+  const num = ipToInt(ip);
+  if (num === 0) return false;
+  return CUBAN_RANGES.some(r => num >= r.start && num <= r.end);
+}
+
 // Simple in-memory rate limiter: 1 test per IP every 5 minutes
 const recentTests = new Map<string, number>();
 setInterval(() => {
@@ -24,10 +43,13 @@ function getClientIp(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
-  // Re-verify Cuba origin server-side
-  const country = req.headers.get('cf-ipcountry');
-  if (process.env.NODE_ENV !== 'development' && country !== 'CU') {
-    return NextResponse.json({ error: 'No disponible fuera de Cuba' }, { status: 403 });
+  // Re-verify Cuba origin server-side (CF-IPCountry + IP range fallback)
+  if (process.env.NODE_ENV !== 'development') {
+    const country = req.headers.get('cf-ipcountry');
+    const ip = getClientIp(req);
+    if (country !== 'CU' && !isCubanIP(ip)) {
+      return NextResponse.json({ error: 'No disponible fuera de Cuba' }, { status: 403 });
+    }
   }
 
   const ip = getClientIp(req);

@@ -117,6 +117,15 @@ async function measureUpload(
   return (totalBytes * 8) / (totalMs / 1000) / 1_000_000;
 }
 
+// ——— Helpers ———
+
+function formatSpeed(mbps: number): { value: string; unit: string } {
+  if (mbps < 0.1) {
+    return { value: Math.round(mbps * 1000).toString(), unit: 'Kbps' };
+  }
+  return { value: mbps.toFixed(1), unit: 'Mbps' };
+}
+
 // ——— Components ———
 
 function SpeedGauge({ value, max, label, unit, color }: {
@@ -328,8 +337,8 @@ export default function SpeedTestPage() {
               Test completado
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              <ResultCard label="Descarga" value={result.download_mbps.toFixed(1)} unit="Mbps" />
-              <ResultCard label="Subida" value={result.upload_mbps.toFixed(1)} unit="Mbps" />
+              <ResultCard label="Descarga" value={formatSpeed(result.download_mbps).value} unit={formatSpeed(result.download_mbps).unit} />
+              <ResultCard label="Subida" value={formatSpeed(result.upload_mbps).value} unit={formatSpeed(result.upload_mbps).unit} />
               <ResultCard label="Latencia" value={result.latency_ms.toString()} unit="ms" />
             </div>
             {result.jitter_ms > 0 && (
@@ -343,8 +352,8 @@ export default function SpeedTestPage() {
                   Promedio ultimas 24h ({avg24h.count} tests)
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: 12 }}>
-                  <div><span style={{ color: '#94a3b8' }}>Descarga:</span> <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{avg24h.download.toFixed(1)} Mbps</span></div>
-                  <div><span style={{ color: '#94a3b8' }}>Subida:</span> <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{avg24h.upload.toFixed(1)} Mbps</span></div>
+                  <div><span style={{ color: '#94a3b8' }}>Descarga:</span> <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{formatSpeed(avg24h.download).value} {formatSpeed(avg24h.download).unit}</span></div>
+                  <div><span style={{ color: '#94a3b8' }}>Subida:</span> <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{formatSpeed(avg24h.upload).value} {formatSpeed(avg24h.upload).unit}</span></div>
                   <div><span style={{ color: '#94a3b8' }}>Latencia:</span> <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{avg24h.latency.toFixed(0)} ms</span></div>
                 </div>
               </div>

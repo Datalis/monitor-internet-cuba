@@ -116,6 +116,12 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  function fmtSpeed(mbps: number | null | undefined): string {
+    if (mbps == null) return 'N/A';
+    if (mbps < 0.1) return `${Math.round(mbps * 1000)} Kbps`;
+    return `${mbps.toFixed(1)} Mbps`;
+  }
+
   const isOutage = outages?.latest_ioda?.outage_detected || false;
   const lowVisibility = (outages?.latest_ripe?.bgp_visibility_pct ?? 1) < 0.7;
   const isAlert = isOutage || lowVisibility;
@@ -221,8 +227,8 @@ export default function Dashboard() {
         <>
           {/* Fila 1: Crowdsourced speed test stats */}
           <div className="grid-3">
-            <StatCard label="Descarga (usuarios)" value={crowdStats?.avg_download != null ? `${crowdStats.avg_download.toFixed(1)} Mbps` : 'N/A'} sub="Promedio crowdsourced" hint="Velocidad promedio de descarga reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
-            <StatCard label="Subida (usuarios)" value={crowdStats?.avg_upload != null ? `${crowdStats.avg_upload.toFixed(1)} Mbps` : 'N/A'} sub="Promedio crowdsourced" hint="Velocidad promedio de subida reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
+            <StatCard label="Descarga (usuarios)" value={fmtSpeed(crowdStats?.avg_download)} sub="Promedio crowdsourced" hint="Velocidad promedio de descarga reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
+            <StatCard label="Subida (usuarios)" value={fmtSpeed(crowdStats?.avg_upload)} sub="Promedio crowdsourced" hint="Velocidad promedio de subida reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
             <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>Tests esta semana</div>
