@@ -24,7 +24,7 @@ export const CUBA_PROVINCES: Province[] = [
   { id: 'IJV', name: 'Isla de la Juventud', lat: 21.711, lng: -82.831 },
 ];
 
-export type DataSource = 'ooni' | 'cloudflare' | 'ripe-stat' | 'ioda' | 'ookla' | 'mlab';
+export type DataSource = 'ooni' | 'cloudflare' | 'ripe-stat' | 'ioda' | 'ookla' | 'mlab' | 'crowdsourced';
 
 export interface NormalizedMetric {
   timestamp: Date;
@@ -103,7 +103,7 @@ export const ALERT_CONDITIONS: AlertRule[] = [
     id: 'cloudflare_traffic_drop',
     field: 'cloudflare.traffic_score',
     condition: 'drops_below',
-    threshold: 30,
+    threshold: 25,
     sustained_minutes: 15,
     message: '📉 Cuba: caída de tráfico HTTP detectada por Cloudflare Radar.',
   },

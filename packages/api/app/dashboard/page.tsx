@@ -3,6 +3,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 
 const Charts = lazy(() => import('./charts'));
+const CubaSpeedMap = lazy(() => import('./cuba-map'));
 
 interface Metric {
   timestamp: string;
@@ -23,6 +24,13 @@ interface CfSummary {
   device_desktop_pct?: number;
   human_pct?: number;
   bot_pct?: number;
+}
+
+interface CrowdStats {
+  avg_download: number | null;
+  avg_upload: number | null;
+  avg_latency: number | null;
+  test_count: number;
 }
 
 interface SubScore { label: string; score: number; weight: number }
@@ -74,23 +82,28 @@ export default function Dashboard() {
   const [traffic, setTraffic] = useState<Metric[]>([]);
   const [cfSummary, setCfSummary] = useState<CfSummary | null>(null);
   const [mlab, setMlab] = useState<Metric[]>([]);
+  const [crowdStats, setCrowdStats] = useState<CrowdStats | null>(null);
+  const [crowdByProvince, setCrowdByProvince] = useState<{ province_id: string; avg_download: number; avg_upload: number; avg_latency: number; test_count: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [outRes, blockRes, cfRes, summaryRes, mlabRes] = await Promise.all([
+        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes] = await Promise.all([
           fetch('/api/outages?hours=48').then(r => r.json()),
           fetch('/api/blocking?days=15').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare&hours=168').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare-summary&hours=24&limit=1').then(r => r.json()),
           fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
+          fetch('/api/speedtest/stats?hours=168').then(r => r.json()).catch(() => null),
         ]);
         setOutages(outRes);
         setBlocking(blockRes.data || []);
         setTraffic(cfRes.data || []);
         setMlab(mlabRes.data || []);
         if (summaryRes.data?.[0]) setCfSummary(summaryRes.data[0]);
+        if (crowdRes?.summary) setCrowdStats(crowdRes.summary);
+        if (crowdRes?.by_province) setCrowdByProvince(crowdRes.by_province);
       } catch (err) {
         console.error('Failed to load data:', err);
       } finally {
@@ -190,6 +203,33 @@ export default function Dashboard() {
             <StatCard label="Visibilidad BGP" value={outages?.latest_ripe?.bgp_visibility_pct != null ? `${(outages.latest_ripe.bgp_visibility_pct * 100).toFixed(1)}%` : 'N/A'} sub="AS27725 (ETECSA)" hint="Que tan visible es la red de ETECSA para el resto de internet. Menos de 70% indica problemas serios de conectividad." />
           </div>
 
+          {/* Fila 5: Crowdsourced speed test stats */}
+          <div className="grid-3" style={{ marginTop: 16 }}>
+            <StatCard label="Descarga (usuarios)" value={crowdStats?.avg_download != null ? `${crowdStats.avg_download.toFixed(1)} Mbps` : 'N/A'} sub="Promedio crowdsourced" hint="Velocidad promedio de descarga reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
+            <StatCard label="Subida (usuarios)" value={crowdStats?.avg_upload != null ? `${crowdStats.avg_upload.toFixed(1)} Mbps` : 'N/A'} sub="Promedio crowdsourced" hint="Velocidad promedio de subida reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>Tests esta semana</div>
+                <div style={{ fontSize: 28, fontWeight: 700 }}>{crowdStats?.test_count ?? 0}</div>
+                <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>Contribuciones de usuarios</div>
+              </div>
+              <a href="/speedtest" style={{
+                display: 'block', marginTop: 12, padding: '8px 0', borderRadius: 8,
+                background: '#3b82f622', color: '#3b82f6', fontSize: 13, fontWeight: 600,
+                textAlign: 'center', textDecoration: 'none',
+              }}>
+                Haz tu propio test &rarr;
+              </a>
+            </div>
+          </div>
+
+          {/* Mapa de velocidad por provincia */}
+          <div style={{ marginBottom: 16 }}>
+            <Suspense fallback={<p>Cargando mapa...</p>}>
+              <CubaSpeedMap data={crowdByProvince} />
+            </Suspense>
+          </div>
+
           {/* Resto de graficas */}
           <Suspense fallback={<p>Cargando graficos...</p>}>
             <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="rest" />
@@ -204,6 +244,7 @@ export default function Dashboard() {
                 <li><strong style={{ color: '#cbd5e1' }}>RIPE Stat (BGP)</strong> — Mide cuantas redes en el mundo pueden &quot;ver&quot; las IPs de ETECSA (AS27725). Si la visibilidad cae, Cuba se esta desconectando del internet global.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>IODA (Georgia Tech)</strong> — Combina datos de BGP, traceroutes y DNS para detectar apagones de internet a nivel de pais. El score va de 0 (normal) a 1 (apagon total).</li>
                 <li><strong style={{ color: '#cbd5e1' }}>OONI</strong> — Tests de conectividad web ejecutados por voluntarios dentro de Cuba. Detectan si sitios especificos estan bloqueados o censurados.</li>
+                <li><strong style={{ color: '#cbd5e1' }}>Test de Velocidad</strong> — Datos crowdsourced de usuarios que ejecutan nuestro <a href="/speedtest" style={{ color: '#3b82f6' }}>test de velocidad</a> desde Cuba. Mide descarga, subida y latencia real.</li>
               </ul>
             </div>
           </div>

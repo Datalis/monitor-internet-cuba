@@ -42,7 +42,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
     confirmed: (d.confirmed_count as number) || 0,
     anomaly: (d.anomaly_count as number) || 0,
     failure: (d.failure_count as number) || 0,
-  })).reverse();
+  }));
 
   const trafficData = traffic.map(d => ({
     time: fmtTime(d.timestamp),
@@ -72,7 +72,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
     return (
       <div style={chartStyle}>
         <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>Trafico HTTP Cuba (Cloudflare Radar)</h3>
-        <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Score relativo de trafico (0-100). Por debajo de 30 se considera anomalo.</p>
+        <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Score relativo de trafico (0-100). Por debajo de 25 se considera anomalo.</p>
         <ResponsiveContainer width="100%" height={200}>
           <AreaChart data={trafficData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -80,7 +80,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
             <YAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 100]} />
             <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155' }} />
             <Area type="monotone" dataKey="score" stroke="#3b82f6" fill="#3b82f620" strokeWidth={2} />
-            <ReferenceLine y={30} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Umbral alerta', fill: '#ef4444', fontSize: 10 }} />
+            <ReferenceLine y={25} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Umbral alerta', fill: '#ef4444', fontSize: 10 }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
