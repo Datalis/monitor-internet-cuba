@@ -1,0 +1,283 @@
+'use client';
+
+import { useEffect, useState, lazy, Suspense } from 'react';
+
+const Charts = lazy(() => import('./charts'));
+
+interface Metric {
+  timestamp: string;
+  metadata: { source: string; province_id: string | null };
+  [key: string]: unknown;
+}
+
+interface OutageData {
+  active_outages: number;
+  latest_ioda: { outage_score: number; outage_detected: boolean; timestamp: string } | null;
+  latest_ripe: { bgp_prefix_count: number; bgp_visibility_pct: number; timestamp: string } | null;
+  ioda: Metric[];
+  ripe: Metric[];
+}
+
+interface CfSummary {
+  device_mobile_pct?: number;
+  device_desktop_pct?: number;
+  human_pct?: number;
+  bot_pct?: number;
+}
+
+interface SubScore { label: string; score: number; weight: number }
+
+function computeBlockingIndex(
+  outages: OutageData | null,
+  traffic: Metric[],
+  blocking: Metric[],
+  mlab: Metric[],
+): { score: number; breakdown: SubScore[] } {
+  const iodaRaw = outages?.latest_ioda?.outage_score ?? 0;
+  const iodaScore = (1 - iodaRaw) * 100;
+
+  const bgpRaw = outages?.latest_ripe?.bgp_visibility_pct ?? 1;
+  const bgpScore = bgpRaw * 100;
+
+  const recentTraffic = traffic.slice(0, 6);
+  const trafficScore = recentTraffic.length > 0
+    ? recentTraffic.reduce((sum, d) => sum + (d.traffic_score as number || 0), 0) / recentTraffic.length
+    : 50;
+
+  const latestBlocking = blocking[blocking.length - 1];
+  const blockingRate = latestBlocking ? (latestBlocking.blocking_rate as number ?? 0) : 0;
+  const ooniScore = (1 - blockingRate) * 100;
+
+  let composite = iodaScore * 0.30 + bgpScore * 0.25 + trafficScore * 0.25 + ooniScore * 0.20;
+
+  const dl = mlab[0]?.download_speed_mbps as number | undefined;
+  const lat = mlab[0]?.latency_ms as number | undefined;
+  let penalty = 0;
+  if (dl != null && dl < 1) penalty += 3;
+  if (lat != null && lat > 500) penalty += 2;
+  composite = Math.max(0, Math.min(100, composite - penalty));
+
+  return {
+    score: Math.round(composite),
+    breakdown: [
+      { label: 'IODA (interrupciones)', score: Math.round(iodaScore), weight: 30 },
+      { label: 'BGP (visibilidad)', score: Math.round(bgpScore), weight: 25 },
+      { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: 25 },
+      { label: 'Censura (OONI)', score: Math.round(ooniScore), weight: 20 },
+    ],
+  };
+}
+
+export default function Dashboard() {
+  const [outages, setOutages] = useState<OutageData | null>(null);
+  const [blocking, setBlocking] = useState<Metric[]>([]);
+  const [traffic, setTraffic] = useState<Metric[]>([]);
+  const [cfSummary, setCfSummary] = useState<CfSummary | null>(null);
+  const [mlab, setMlab] = useState<Metric[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [outRes, blockRes, cfRes, summaryRes, mlabRes] = await Promise.all([
+          fetch('/api/outages?hours=48').then(r => r.json()),
+          fetch('/api/blocking?days=15').then(r => r.json()),
+          fetch('/api/metrics?source=cloudflare&hours=168').then(r => r.json()),
+          fetch('/api/metrics?source=cloudflare-summary&hours=24&limit=1').then(r => r.json()),
+          fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
+        ]);
+        setOutages(outRes);
+        setBlocking(blockRes.data || []);
+        setTraffic(cfRes.data || []);
+        setMlab(mlabRes.data || []);
+        if (summaryRes.data?.[0]) setCfSummary(summaryRes.data[0]);
+      } catch (err) {
+        console.error('Failed to load data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+    const interval = setInterval(load, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const isOutage = outages?.latest_ioda?.outage_detected || false;
+  const lowVisibility = (outages?.latest_ripe?.bgp_visibility_pct ?? 1) < 0.7;
+  const isAlert = isOutage || lowVisibility;
+  const statusColor = isOutage ? '#ef4444' : lowVisibility ? '#f59e0b' : '#22c55e';
+  const statusText = isOutage ? 'OUTAGE DETECTADO' : lowVisibility ? 'DEGRADADO' : 'OPERATIVO';
+
+  return (
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 16px' }}>
+      {!loading && isAlert && (
+        <div style={{
+          background: isOutage ? '#ef444422' : '#f59e0b22',
+          border: `2px solid ${isOutage ? '#ef4444' : '#f59e0b'}`,
+          borderRadius: 12,
+          padding: '16px 20px',
+          marginBottom: 20,
+          animation: isOutage ? 'pulse-alert 2s ease-in-out infinite' : undefined,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 32 }}>{isOutage ? '\u{1F6A8}' : '\u26A0\uFE0F'}</span>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: isOutage ? '#ef4444' : '#f59e0b' }}>
+                {isOutage ? 'ALERTA: Outage de Internet detectado en Cuba' : 'ALERTA: Visibilidad BGP degradada'}
+              </div>
+              <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
+                {isOutage
+                  ? `IODA ha detectado una interrupcion activa. Score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}`
+                  : `La visibilidad BGP de ETECSA (AS27725) esta por debajo del 70%: ${((outages?.latest_ripe?.bgp_visibility_pct ?? 0) * 100).toFixed(1)}%`}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes pulse-alert { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }`}</style>
+
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24 }}>Cuba Internet Monitor</h1>
+          <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 14 }}>Monitoreo H24 del estado de internet en Cuba</p>
+        </div>
+        <div style={{
+          padding: '8px 16px', borderRadius: 8,
+          background: statusColor + '22', color: statusColor,
+          fontWeight: 700, fontSize: 14,
+        }}>
+          {loading ? 'CARGANDO...' : statusText}
+        </div>
+      </header>
+
+      {loading ? (
+        <p style={{ textAlign: 'center', padding: 40 }}>Cargando datos...</p>
+      ) : (
+        <>
+          {/* Fila 1: 3 widgets principales */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
+            <StatCard label="Interrupciones" value={outages?.active_outages?.toString() || '0'} sub="Ultimas 48 horas" hint="Cantidad de apagones de internet detectados en Cuba en las ultimas 48 horas." />
+            <StatCard label="Descarga" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
+            <StatCard label="Latencia" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
+          </div>
+
+          {/* Fila 2: Grafica de trafico principal */}
+          <Suspense fallback={<p>Cargando graficos...</p>}>
+            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
+          </Suspense>
+
+          {/* Fila 3: Indice de Apertura + OONI */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 16 }}>
+            <BlockingIndexGauge {...computeBlockingIndex(outages, traffic, blocking, mlab)} />
+            <Suspense fallback={<p>Cargando graficos...</p>}>
+              <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="ooni" />
+            </Suspense>
+          </div>
+
+          {/* Fila 4: barras laterales + widgets tecnicos */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, margin: '16px 0' }}>
+            <MiniBarCard label="Movil vs Desktop" a={cfSummary?.device_mobile_pct} b={cfSummary?.device_desktop_pct} aLabel="Movil" bLabel="Desktop" aColor="#3b82f6" bColor="#64748b" hint="Porcentaje del trafico web cubano que viene de telefonos vs computadoras, segun Cloudflare Radar." />
+            <MiniBarCard label="Humano vs Bot" a={cfSummary?.human_pct} b={cfSummary?.bot_pct} aLabel="Humano" bLabel="Bot" aColor="#22c55e" bColor="#ef4444" hint="Porcentaje de trafico generado por personas reales vs bots automatizados, segun Cloudflare Radar." />
+            <StatCard label="Visibilidad BGP" value={outages?.latest_ripe?.bgp_visibility_pct != null ? `${(outages.latest_ripe.bgp_visibility_pct * 100).toFixed(1)}%` : 'N/A'} sub="AS27725 (ETECSA)" hint="Que tan visible es la red de ETECSA para el resto de internet. Menos de 70% indica problemas serios de conectividad." />
+          </div>
+
+          {/* Resto de graficas */}
+          <Suspense fallback={<p>Cargando graficos...</p>}>
+            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="rest" />
+          </Suspense>
+
+          <div style={{ marginTop: 24 }}>
+            <h2 style={{ fontSize: 18, marginBottom: 12 }}>Acerca de los datos</h2>
+            <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.8 }}>
+              <p style={{ marginBottom: 12 }}>Este panel recopila datos de multiples fuentes independientes para ofrecer una vista integral del estado de internet en Cuba:</p>
+              <ul style={{ paddingLeft: 20, margin: 0 }}>
+                <li><strong style={{ color: '#cbd5e1' }}>Cloudflare Radar</strong> — Volumen relativo de trafico HTTP desde Cuba (0-100). Un score bajo indica que hay menos trafico de lo normal, posible senal de interrupcion.</li>
+                <li><strong style={{ color: '#cbd5e1' }}>RIPE Stat (BGP)</strong> — Mide cuantas redes en el mundo pueden &quot;ver&quot; las IPs de ETECSA (AS27725). Si la visibilidad cae, Cuba se esta desconectando del internet global.</li>
+                <li><strong style={{ color: '#cbd5e1' }}>IODA (Georgia Tech)</strong> — Combina datos de BGP, traceroutes y DNS para detectar apagones de internet a nivel de pais. El score va de 0 (normal) a 1 (apagon total).</li>
+                <li><strong style={{ color: '#cbd5e1' }}>OONI</strong> — Tests de conectividad web ejecutados por voluntarios dentro de Cuba. Detectan si sitios especificos estan bloqueados o censurados.</li>
+              </ul>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, hint }: { label: string; value: string; sub: string; hint?: string }) {
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 12, padding: 16 }} title={hint}>
+      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 700 }}>{value}</div>
+      <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{sub}</div>
+      {hint && <div style={{ color: '#475569', fontSize: 11, marginTop: 8, lineHeight: 1.4 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function BlockingIndexGauge({ score, breakdown }: { score: number; breakdown: SubScore[] }) {
+  const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444';
+  const statusLabel = score >= 70 ? 'OPERATIVO' : score >= 40 ? 'DEGRADADO' : 'BLOQUEADO';
+  const radius = 70;
+  const circumference = Math.PI * radius;
+  const fillLength = (score / 100) * circumference;
+
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 12, padding: '20px 24px', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 8 }}>INDICE DE APERTURA DE INTERNET</div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+        <svg width="180" height="105" viewBox="0 0 180 105">
+          <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="#334155" strokeWidth="12" strokeLinecap="round" />
+          <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
+            strokeDasharray={`${fillLength} ${circumference}`} />
+          <text x="90" y="78" textAnchor="middle" fill="white" fontSize="36" fontWeight="700">{score}</text>
+          <text x="90" y="98" textAnchor="middle" fill="#64748b" fontSize="11">de 100</text>
+        </svg>
+        <div style={{ color, fontWeight: 700, fontSize: 14, marginTop: 2 }}>{statusLabel}</div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+        {breakdown.map((sub) => {
+          const barColor = sub.score >= 70 ? '#22c55e' : sub.score >= 40 ? '#f59e0b' : '#ef4444';
+          return (
+            <div key={sub.label}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', marginBottom: 3 }}>
+                <span>{sub.label} ({sub.weight}%)</span>
+                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{sub.score}</span>
+              </div>
+              <div style={{ height: 5, background: '#334155', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${sub.score}%`, height: '100%', borderRadius: 3, background: barColor }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MiniBarCard({ label, a, b, aLabel, bLabel, aColor, bColor, hint }: {
+  label: string; a?: number; b?: number; aLabel: string; bLabel: string; aColor: string; bColor: string; hint?: string;
+}) {
+  const hasData = a != null && b != null;
+
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 12, padding: 16 }}>
+      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 8 }}>{label}</div>
+      {hasData ? (
+        <div>
+          <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 10 }}>
+            <div style={{ width: `${a}%`, background: aColor }} />
+            <div style={{ width: `${b}%`, background: bColor }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+            <div><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: aColor, marginRight: 6 }} /><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{a.toFixed(1)}%</span> <span style={{ color: '#94a3b8' }}>{aLabel}</span></div>
+            <div><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: bColor, marginRight: 6 }} /><span style={{ color: '#e2e8f0', fontWeight: 700 }}>{b.toFixed(1)}%</span> <span style={{ color: '#94a3b8' }}>{bLabel}</span></div>
+          </div>
+          {hint && <div style={{ color: '#475569', fontSize: 11, marginTop: 8, lineHeight: 1.4 }}>{hint}</div>}
+        </div>
+      ) : (
+        <div style={{ fontSize: 28, fontWeight: 700 }}>N/A</div>
+      )}
+    </div>
+  );
+}

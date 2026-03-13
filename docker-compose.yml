@@ -1,0 +1,63 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+    environment:
+      MONGO_INITDB_DATABASE: cuba_monitor
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.5"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+  etl:
+    build: ./packages/etl
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/cuba_monitor
+    volumes:
+      - etl_data:/app/data
+    networks:
+      - backend
+
+  api:
+    build: ./packages/api
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017/cuba_monitor
+    networks:
+      - backend
+      - default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.internet-monitor.rule=Host(`internet.datalis.dev`)"
+      - "traefik.http.routers.internet-monitor.entrypoints=websecure"
+      - "traefik.http.routers.internet-monitor.tls.certresolver=leresolver"
+      - "traefik.http.services.internet-monitor.loadbalancer.server.port=3000"
+      - "traefik.docker.network=traefik_default"
+      - "traefik.http.middlewares.internet-monitor_compress.compress=true"
+      - "traefik.http.routers.internet-monitor.middlewares=internet-monitor_compress"
+
+volumes:
+  mongo_data:
+  etl_data:
+
+networks:
+  backend:
+  default:
+    external: true
+    name: traefik_default

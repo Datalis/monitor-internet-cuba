@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Next.js build
+.next/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# MongoDB data
+mongo/data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+
+# Debug
+*.tsbuildinfo
