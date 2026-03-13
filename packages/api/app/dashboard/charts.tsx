@@ -119,7 +119,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
     <div>
       {/* Velocidad y latencia */}
       {mlabData.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: 16 }}>
+        <div className="grid-rest">
           <div style={chartStyle}>
             <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>Velocidad de Descarga (Cloudflare Radar)</h3>
             <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Velocidad de descarga medida por speed.cloudflare.com desde Cuba.</p>
