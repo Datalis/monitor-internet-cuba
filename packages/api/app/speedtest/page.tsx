@@ -49,18 +49,21 @@ async function measureDownload(
   signal: AbortSignal,
   onProgress: (mbps: number) => void,
 ): Promise<number> {
-  const sizes = [102400, 512000, 1048576, 2097152, 5242880]; // 100KB → 5MB
+  const sizes = [51200, 102400, 256000, 512000, 1048576]; // 50KB → 1MB (conservador para Cuba)
+  const MAX_BYTES = 3 * 1024 * 1024; // 3MB tope total
   const samples: { bytes: number; ms: number }[] = [];
   const deadline = performance.now() + 8000;
   let sizeIdx = 0;
+  let transferred = 0;
 
-  while (performance.now() < deadline && !signal.aborted) {
+  while (performance.now() < deadline && transferred < MAX_BYTES && !signal.aborted) {
     const size = sizes[Math.min(sizeIdx, sizes.length - 1)];
     const t0 = performance.now();
     const res = await fetch(`/api/speedtest/download?size=${size}`, { cache: 'no-store', signal });
     await res.arrayBuffer();
     const elapsed = performance.now() - t0;
     samples.push({ bytes: size, ms: elapsed });
+    transferred += size;
 
     const mbps = (size * 8) / (elapsed / 1000) / 1_000_000;
     onProgress(mbps);
@@ -82,12 +85,14 @@ async function measureUpload(
   signal: AbortSignal,
   onProgress: (mbps: number) => void,
 ): Promise<number> {
-  const sizes = [102400, 512000, 1048576, 2097152];
+  const sizes = [51200, 102400, 256000, 512000]; // 50KB → 512KB (conservador para Cuba)
+  const MAX_BYTES = 2 * 1024 * 1024; // 2MB tope total
   const samples: { bytes: number; ms: number }[] = [];
   const deadline = performance.now() + 6000;
   let sizeIdx = 0;
+  let transferred = 0;
 
-  while (performance.now() < deadline && !signal.aborted) {
+  while (performance.now() < deadline && transferred < MAX_BYTES && !signal.aborted) {
     const size = sizes[Math.min(sizeIdx, sizes.length - 1)];
     const blob = new Uint8Array(size); // zeros are fine for upload measurement
     const t0 = performance.now();
@@ -97,6 +102,7 @@ async function measureUpload(
     });
     const elapsed = performance.now() - t0;
     samples.push({ bytes: size, ms: elapsed });
+    transferred += size;
 
     const mbps = (size * 8) / (elapsed / 1000) / 1_000_000;
     onProgress(mbps);
@@ -255,7 +261,7 @@ export default function SpeedTestPage() {
       {/* Province selector */}
       <div style={{ marginBottom: 24 }}>
         <label style={{ color: '#94a3b8', fontSize: 12, display: 'block', marginBottom: 6 }}>
-          Provincia (opcional)
+          Provincia
         </label>
         <select
           value={province}
@@ -267,7 +273,7 @@ export default function SpeedTestPage() {
             fontSize: 14, outline: 'none', cursor: 'pointer',
           }}
         >
-          <option value="">Detectar automaticamente</option>
+          <option value="">Selecciona tu provincia</option>
           {PROVINCES.map(p => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -281,19 +287,28 @@ export default function SpeedTestPage() {
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       }}>
         {phase === 'idle' ? (
-          <button
-            onClick={runTest}
-            style={{
-              width: 140, height: 140, borderRadius: '50%',
-              background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-              border: 'none', color: 'white', fontSize: 18, fontWeight: 700,
-              cursor: 'pointer', transition: 'transform 0.2s',
-            }}
-            onMouseOver={e => (e.currentTarget.style.transform = 'scale(1.05)')}
-            onMouseOut={e => (e.currentTarget.style.transform = 'scale(1)')}
-          >
-            INICIAR
-          </button>
+          <>
+            <button
+              onClick={runTest}
+              disabled={!province}
+              style={{
+                width: 140, height: 140, borderRadius: '50%',
+                background: province ? 'linear-gradient(135deg, #3b82f6, #8b5cf6)' : '#334155',
+                border: 'none', color: province ? 'white' : '#64748b', fontSize: 18, fontWeight: 700,
+                cursor: province ? 'pointer' : 'not-allowed', transition: 'transform 0.2s',
+                opacity: province ? 1 : 0.6,
+              }}
+              onMouseOver={e => { if (province) e.currentTarget.style.transform = 'scale(1.05)'; }}
+              onMouseOut={e => (e.currentTarget.style.transform = 'scale(1)')}
+            >
+              INICIAR
+            </button>
+            {!province && (
+              <div style={{ color: '#f59e0b', fontSize: 12, marginTop: 12 }}>
+                Selecciona tu provincia para iniciar el test
+              </div>
+            )}
+          </>
         ) : isRunning ? (
           <>
             <SpeedGauge

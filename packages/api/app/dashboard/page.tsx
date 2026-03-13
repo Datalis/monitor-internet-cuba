@@ -85,6 +85,7 @@ export default function Dashboard() {
   const [crowdStats, setCrowdStats] = useState<CrowdStats | null>(null);
   const [crowdByProvince, setCrowdByProvince] = useState<{ province_id: string; avg_download: number; avg_upload: number; avg_latency: number; test_count: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showOutageInfo, setShowOutageInfo] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -120,6 +121,8 @@ export default function Dashboard() {
   const isAlert = isOutage || lowVisibility;
   const statusColor = isOutage ? '#ef4444' : lowVisibility ? '#f59e0b' : '#22c55e';
   const statusText = isOutage ? 'OUTAGE DETECTADO' : lowVisibility ? 'DEGRADADO' : 'OPERATIVO';
+  const activeOutages = outages?.active_outages ?? 0;
+  const outageTagColor = activeOutages >= 2 ? '#ef4444' : activeOutages >= 1 ? '#f59e0b' : '#94a3b8';
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 16px' }}>
@@ -163,12 +166,52 @@ export default function Dashboard() {
           <h1 style={{ margin: 0, fontSize: 24 }}>Cuba Internet Monitor</h1>
           <p style={{ margin: '4px 0 0', color: '#94a3b8', fontSize: 14 }}>Monitoreo H24 del estado de internet en Cuba</p>
         </div>
-        <div style={{
-          padding: '8px 16px', borderRadius: 8,
-          background: statusColor + '22', color: statusColor,
-          fontWeight: 700, fontSize: 14,
-        }}>
-          {loading ? 'CARGANDO...' : statusText}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            padding: '8px 16px', borderRadius: 8,
+            background: statusColor + '22', color: statusColor,
+            fontWeight: 700, fontSize: 14,
+          }}>
+            {loading ? 'CARGANDO...' : statusText}
+          </div>
+          {!loading && (
+            <div style={{ position: 'relative' }}>
+              <div
+                onClick={() => setShowOutageInfo(v => !v)}
+                style={{
+                  padding: '8px 12px', borderRadius: 8,
+                  background: activeOutages > 0 ? outageTagColor + '22' : '#1e293b',
+                  color: activeOutages > 0 ? outageTagColor : '#94a3b8',
+                  fontSize: 13, cursor: 'pointer',
+                  fontWeight: activeOutages > 0 ? 600 : 400,
+                  userSelect: 'none',
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>{activeOutages}</span> {activeOutages === 1 ? 'INTERRUPCION' : 'INTERRUPCIONES'}
+              </div>
+              {showOutageInfo && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 8,
+                  background: '#0f172a', border: '1px solid #334155', borderRadius: 10,
+                  padding: '12px 16px', width: 280, zIndex: 50,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+                    {activeOutages} {activeOutages === 1 ? 'interrupción detectada' : 'interrupciones detectadas'}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+                    Cantidad de apagones de internet detectados en Cuba en las últimas 48 horas.
+                  </div>
+                  <div
+                    onClick={() => setShowOutageInfo(false)}
+                    style={{ fontSize: 11, color: '#64748b', marginTop: 8, cursor: 'pointer', textAlign: 'right' }}
+                  >
+                    Cerrar
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -176,35 +219,8 @@ export default function Dashboard() {
         <p style={{ textAlign: 'center', padding: 40 }}>Cargando datos...</p>
       ) : (
         <>
-          {/* Fila 1: 3 widgets principales */}
+          {/* Fila 1: Crowdsourced speed test stats */}
           <div className="grid-3">
-            <StatCard label="Interrupciones" value={outages?.active_outages?.toString() || '0'} sub="Ultimas 48 horas" hint="Cantidad de apagones de internet detectados en Cuba en las ultimas 48 horas." />
-            <StatCard label="Descarga" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
-            <StatCard label="Latencia" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
-          </div>
-
-          {/* Fila 2: Grafica de trafico principal */}
-          <Suspense fallback={<p>Cargando graficos...</p>}>
-            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
-          </Suspense>
-
-          {/* Fila 3: Indice de Apertura + OONI */}
-          <div className="grid-1-2">
-            <BlockingIndexGauge {...computeBlockingIndex(outages, traffic, blocking, mlab)} />
-            <Suspense fallback={<p>Cargando graficos...</p>}>
-              <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="ooni" />
-            </Suspense>
-          </div>
-
-          {/* Fila 4: barras laterales + widgets tecnicos */}
-          <div className="grid-3">
-            <MiniBarCard label="Movil vs Desktop" a={cfSummary?.device_mobile_pct} b={cfSummary?.device_desktop_pct} aLabel="Movil" bLabel="Desktop" aColor="#3b82f6" bColor="#64748b" hint="Porcentaje del trafico web cubano que viene de telefonos vs computadoras, segun Cloudflare Radar." />
-            <MiniBarCard label="Humano vs Bot" a={cfSummary?.human_pct} b={cfSummary?.bot_pct} aLabel="Humano" bLabel="Bot" aColor="#22c55e" bColor="#ef4444" hint="Porcentaje de trafico generado por personas reales vs bots automatizados, segun Cloudflare Radar." />
-            <StatCard label="Visibilidad BGP" value={outages?.latest_ripe?.bgp_visibility_pct != null ? `${(outages.latest_ripe.bgp_visibility_pct * 100).toFixed(1)}%` : 'N/A'} sub="AS27725 (ETECSA)" hint="Que tan visible es la red de ETECSA para el resto de internet. Menos de 70% indica problemas serios de conectividad." />
-          </div>
-
-          {/* Fila 5: Crowdsourced speed test stats */}
-          <div className="grid-3" style={{ marginTop: 16 }}>
             <StatCard label="Descarga (usuarios)" value={crowdStats?.avg_download != null ? `${crowdStats.avg_download.toFixed(1)} Mbps` : 'N/A'} sub="Promedio crowdsourced" hint="Velocidad promedio de descarga reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
             <StatCard label="Subida (usuarios)" value={crowdStats?.avg_upload != null ? `${crowdStats.avg_upload.toFixed(1)} Mbps` : 'N/A'} sub="Promedio crowdsourced" hint="Velocidad promedio de subida reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
             <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -214,11 +230,17 @@ export default function Dashboard() {
                 <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>Contribuciones de usuarios</div>
               </div>
               <a href="/speedtest" style={{
-                display: 'block', marginTop: 12, padding: '8px 0', borderRadius: 8,
-                background: '#3b82f622', color: '#3b82f6', fontSize: 13, fontWeight: 600,
+                display: 'block', marginTop: 12, padding: '10px 0', borderRadius: 8,
+                background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                color: 'white', fontSize: 14, fontWeight: 700,
                 textAlign: 'center', textDecoration: 'none',
-              }}>
-                Haz tu propio test &rarr;
+                boxShadow: '0 0 16px rgba(59,130,246,0.4)',
+                transition: 'transform 0.15s, box-shadow 0.15s',
+              }}
+                onMouseOver={e => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 0 24px rgba(59,130,246,0.6)'; }}
+                onMouseOut={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 0 16px rgba(59,130,246,0.4)'; }}
+              >
+                &#x1F680; Haz tu propio test &rarr;
               </a>
             </div>
           </div>
@@ -228,6 +250,32 @@ export default function Dashboard() {
             <Suspense fallback={<p>Cargando mapa...</p>}>
               <CubaSpeedMap data={crowdByProvince} />
             </Suspense>
+          </div>
+
+          {/* Fila 2: Grafica de trafico principal */}
+          <Suspense fallback={<p>Cargando graficos...</p>}>
+            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
+          </Suspense>
+
+          {/* Fila 3: Datos de Cloudflare/infraestructura */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
+            <StatCard label="Descarga" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
+            <StatCard label="Latencia" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
+          </div>
+
+          {/* Fila 4: Indice de Apertura + OONI */}
+          <div className="grid-1-2">
+            <BlockingIndexGauge {...computeBlockingIndex(outages, traffic, blocking, mlab)} />
+            <Suspense fallback={<p>Cargando graficos...</p>}>
+              <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="ooni" />
+            </Suspense>
+          </div>
+
+          {/* Fila 5: barras laterales + widgets tecnicos */}
+          <div className="grid-3">
+            <MiniBarCard label="Movil vs Desktop" a={cfSummary?.device_mobile_pct} b={cfSummary?.device_desktop_pct} aLabel="Movil" bLabel="Desktop" aColor="#3b82f6" bColor="#64748b" hint="Porcentaje del trafico web cubano que viene de telefonos vs computadoras, segun Cloudflare Radar." />
+            <MiniBarCard label="Humano vs Bot" a={cfSummary?.human_pct} b={cfSummary?.bot_pct} aLabel="Humano" bLabel="Bot" aColor="#22c55e" bColor="#ef4444" hint="Porcentaje de trafico generado por personas reales vs bots automatizados, segun Cloudflare Radar." />
+            <StatCard label="Visibilidad BGP" value={outages?.latest_ripe?.bgp_visibility_pct != null ? `${(outages.latest_ripe.bgp_visibility_pct * 100).toFixed(1)}%` : 'N/A'} sub="AS27725 (ETECSA)" hint="Que tan visible es la red de ETECSA para el resto de internet. Menos de 70% indica problemas serios de conectividad." />
           </div>
 
           {/* Resto de graficas */}
