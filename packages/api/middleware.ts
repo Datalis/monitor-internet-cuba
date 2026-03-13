@@ -50,7 +50,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Debug endpoint: /api/speedtest/debug-geo — always allowed
+  // Public endpoints — no geo-restriction needed
+  // Stats returns aggregate data for dashboard; debug-geo is for troubleshooting
+  if (request.nextUrl.pathname === '/api/speedtest/stats') {
+    return NextResponse.next();
+  }
+
   if (request.nextUrl.pathname === '/api/speedtest/debug-geo') {
     const ip = getClientIP(request);
     return NextResponse.json({
