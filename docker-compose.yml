@@ -30,7 +30,7 @@ services:
     networks:
       - backend
 
-  api:
+  web-api:
     build: ./packages/api
     restart: unless-stopped
     depends_on:
