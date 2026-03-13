@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - backend
+      - internal
 
   etl:
     build: ./packages/etl
@@ -28,7 +28,7 @@ services:
     volumes:
       - etl_data:/app/data
     networks:
-      - backend
+      - internal
 
   web-api:
     build: ./packages/api
@@ -40,7 +40,7 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/cuba_monitor
     networks:
-      - backend
+      - internal
       - default
     labels:
       - "traefik.enable=true"
@@ -57,7 +57,7 @@ volumes:
   etl_data:
 
 networks:
-  backend:
+  internal:
   default:
     external: true
     name: traefik_default
