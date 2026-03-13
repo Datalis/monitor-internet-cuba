@@ -46,7 +46,7 @@ services:
       - default
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.internet-monitor.rule=Host(`internet.datalis.dev`, `internet.cubapk.com`)"
+      - "traefik.http.routers.internet-monitor.rule=Host(`internet.cubapk.com`)"
       - "traefik.http.routers.internet-monitor.entrypoints=websecure"
       - "traefik.http.routers.internet-monitor.tls.certresolver=leresolver"
       - "traefik.http.services.internet-monitor.loadbalancer.server.port=3000"
