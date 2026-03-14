@@ -265,8 +265,8 @@ export default function Dashboard() {
 
           {/* Fila 3: Datos de Cloudflare/infraestructura */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
-            <StatCard label="Descarga" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
-            <StatCard label="Latencia" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
+            <StatCard label="Descarga (Cloudflare)" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
+            <StatCard label="Latencia (Cloudflare)" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
           </div>
 
           {/* Fila 4: Indice de Apertura + OONI */}
@@ -302,6 +302,32 @@ export default function Dashboard() {
               </ul>
             </div>
           </div>
+
+          {/* Footer: proyecto de CubaPK y elToque */}
+          <footer style={{
+            marginTop: 40,
+            borderTop: '1px solid #1e293b',
+            paddingTop: 32,
+            paddingBottom: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 16,
+          }}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>Un proyecto de</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
+              <a href="https://cubapk.com" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: '#e2e8f0' }}>
+                <img src="/logo-cubapk.png" alt="CubaPK" style={{ height: 40, width: 40 }} />
+                <span style={{ fontSize: 16, fontWeight: 600 }}>CubaPK</span>
+              </a>
+              <a href="https://eltoque.com" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: '#e2e8f0' }}>
+                <img src="/logo-eltoque.png" alt="elToque" style={{ height: 32 }} />
+              </a>
+            </div>
+            <div style={{ color: '#475569', fontSize: 11, marginTop: 8, textAlign: 'center', maxWidth: 500, lineHeight: 1.6 }}>
+              Datos recopilados de fuentes publicas (Cloudflare Radar, RIPE, IODA, OONI) y contribuciones de usuarios desde Cuba.
+            </div>
+          </footer>
         </>
       )}
     </div>
