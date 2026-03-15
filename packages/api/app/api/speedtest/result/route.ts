@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   const { download_mbps, upload_mbps, latency_ms, jitter_ms, province_id,
     user_agent, connection_type, connection_downlink, screen_width, screen_height,
-    test_duration_ms } = body as Record<string, unknown>;
+    test_duration_ms, timed_out } = body as Record<string, unknown>;
 
   // Validate required fields
   if (typeof download_mbps !== 'number' || download_mbps < 0 ||
@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     screen_width: typeof screen_width === 'number' ? Math.round(screen_width as number) : null,
     screen_height: typeof screen_height === 'number' ? Math.round(screen_height as number) : null,
     test_duration_ms: typeof test_duration_ms === 'number' ? Math.round(test_duration_ms as number) : null,
+    timed_out: timed_out === true,
     client_ip_hash: ipHash,
   };
 

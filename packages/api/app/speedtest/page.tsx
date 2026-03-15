@@ -195,33 +195,55 @@ export default function SpeedTestPage() {
     setResult(null);
     setError('');
     setLiveSpeed(0);
-    setTestStart(performance.now());
+    const start = performance.now();
+    setTestStart(start);
+
+    let latency = 0;
+    let jitter = 0;
+    let download = 0;
+    let upload = 0;
+    let timedOut = false;
 
     try {
       // Phase 1: Latency
       setPhase('latency');
-      const { latency, jitter } = await measureLatency(ac.signal);
+      const latResult = await measureLatency(ac.signal);
+      latency = latResult.latency;
+      jitter = latResult.jitter;
 
       // Phase 2: Download
       setPhase('download');
-      const download = await measureDownload(ac.signal, setLiveSpeed);
+      download = await measureDownload(ac.signal, setLiveSpeed);
 
       // Phase 3: Upload
       setPhase('upload');
       setLiveSpeed(0);
-      const upload = await measureUpload(ac.signal, setLiveSpeed);
+      upload = await measureUpload(ac.signal, setLiveSpeed);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        timedOut = true;
+      } else {
+        setError('Error durante el test. Intenta de nuevo.');
+        console.error('[speedtest]', err);
+        setPhase('error');
+        clearTimeout(timeout);
+        return;
+      }
+    }
 
-      const testResult: TestResult = {
-        download_mbps: Math.round(download * 100) / 100,
-        upload_mbps: Math.round(upload * 100) / 100,
-        latency_ms: latency,
-        jitter_ms: jitter,
-      };
-      setResult(testResult);
-      setLiveSpeed(0);
+    // Save whatever we managed to measure (even partial/timeout results)
+    const testResult: TestResult = {
+      download_mbps: Math.round(download * 100) / 100,
+      upload_mbps: Math.round(upload * 100) / 100,
+      latency_ms: latency,
+      jitter_ms: jitter,
+    };
+    setResult(testResult);
+    setLiveSpeed(0);
 
-      // Phase 4: Submit
-      setPhase('submitting');
+    // Submit partial or full result
+    setPhase('submitting');
+    try {
       const nav = navigator as Navigator & { connection?: { effectiveType?: string; downlink?: number } };
       await fetch('/api/speedtest/result', {
         method: 'POST',
@@ -234,22 +256,19 @@ export default function SpeedTestPage() {
           connection_downlink: nav.connection?.downlink || null,
           screen_width: screen.width,
           screen_height: screen.height,
-          test_duration_ms: Math.round(performance.now() - testStart),
+          test_duration_ms: Math.round(performance.now() - start),
+          timed_out: timedOut,
         }),
       });
-
-      setPhase('complete');
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        setError('El test tardo demasiado. Intenta de nuevo.');
-      } else {
-        setError('Error durante el test. Intenta de nuevo.');
-        console.error('[speedtest]', err);
-      }
-      setPhase('error');
-    } finally {
-      clearTimeout(timeout);
+    } catch {
+      // Submit failed, but we still show the result
     }
+
+    if (timedOut) {
+      setError('La conexion es muy lenta. Se guardaron los datos parciales.');
+    }
+    setPhase('complete');
+    clearTimeout(timeout);
   }, [province, testStart]);
 
   const isRunning = phase !== 'idle' && phase !== 'complete' && phase !== 'error';
@@ -333,8 +352,8 @@ export default function SpeedTestPage() {
           </>
         ) : phase === 'complete' && result ? (
           <div style={{ width: '100%' }}>
-            <div style={{ color: '#22c55e', fontSize: 14, fontWeight: 700, marginBottom: 16 }}>
-              Test completado
+            <div style={{ color: error ? '#f59e0b' : '#22c55e', fontSize: 14, fontWeight: 700, marginBottom: 16 }}>
+              {error || 'Test completado'}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <ResultCard label="Descarga" value={formatSpeed(result.download_mbps).value} unit={formatSpeed(result.download_mbps).unit} />

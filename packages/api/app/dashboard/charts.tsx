@@ -46,7 +46,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
 
   const trafficData = traffic.map(d => ({
     time: fmtTime(d.timestamp),
-    score: d.traffic_score as number,
+    score: Math.round((d.traffic_score as number) * 100) / 100,
   })).reverse();
 
   const iodaData = (outages?.ioda || []).map(d => ({

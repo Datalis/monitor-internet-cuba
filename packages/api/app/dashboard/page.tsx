@@ -40,6 +40,7 @@ function computeBlockingIndex(
   traffic: Metric[],
   blocking: Metric[],
   mlab: Metric[],
+  crowd: CrowdStats | null,
 ): { score: number; breakdown: SubScore[] } {
   const iodaRaw = outages?.latest_ioda?.outage_score ?? 0;
   const iodaScore = (1 - iodaRaw) * 100;
@@ -56,7 +57,25 @@ function computeBlockingIndex(
   const blockingRate = latestBlocking ? (latestBlocking.blocking_rate as number ?? 0) : 0;
   const ooniScore = (1 - blockingRate) * 100;
 
-  let composite = iodaScore * 0.30 + bgpScore * 0.25 + trafficScore * 0.25 + ooniScore * 0.20;
+  // Crowdsourced speed quality score (0-100)
+  let crowdScore = 50; // default when no data
+  if (crowd && crowd.test_count > 0 && crowd.avg_download != null) {
+    // Score based on download speed: 5+ Mbps = 100, 0 Mbps = 0
+    const speedScore = Math.min(100, (crowd.avg_download / 5) * 100);
+    // Latency penalty: >500ms is bad
+    const latPenalty = crowd.avg_latency != null ? Math.min(20, Math.max(0, (crowd.avg_latency - 200) / 15)) : 0;
+    crowdScore = Math.max(0, speedScore - latPenalty);
+  }
+  const hasCrowd = crowd != null && crowd.test_count > 0;
+
+  // Weights: with crowdsourced data, redistribute to include it
+  const wIoda = hasCrowd ? 0.25 : 0.30;
+  const wBgp = hasCrowd ? 0.20 : 0.25;
+  const wTraffic = hasCrowd ? 0.20 : 0.25;
+  const wOoni = hasCrowd ? 0.15 : 0.20;
+  const wCrowd = hasCrowd ? 0.20 : 0;
+
+  let composite = iodaScore * wIoda + bgpScore * wBgp + trafficScore * wTraffic + ooniScore * wOoni + crowdScore * wCrowd;
 
   const dl = mlab[0]?.download_speed_mbps as number | undefined;
   const lat = mlab[0]?.latency_ms as number | undefined;
@@ -65,15 +84,17 @@ function computeBlockingIndex(
   if (lat != null && lat > 500) penalty += 2;
   composite = Math.max(0, Math.min(100, composite - penalty));
 
-  return {
-    score: Math.round(composite),
-    breakdown: [
-      { label: 'IODA (interrupciones)', score: Math.round(iodaScore), weight: 30 },
-      { label: 'BGP (visibilidad)', score: Math.round(bgpScore), weight: 25 },
-      { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: 25 },
-      { label: 'Censura (OONI)', score: Math.round(ooniScore), weight: 20 },
-    ],
-  };
+  const breakdown: SubScore[] = [
+    { label: 'IODA (interrupciones)', score: Math.round(iodaScore), weight: Math.round(wIoda * 100) },
+    { label: 'BGP (visibilidad)', score: Math.round(bgpScore), weight: Math.round(wBgp * 100) },
+    { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: Math.round(wTraffic * 100) },
+    { label: 'Censura (OONI)', score: Math.round(ooniScore), weight: Math.round(wOoni * 100) },
+  ];
+  if (hasCrowd) {
+    breakdown.push({ label: 'Velocidad (usuarios)', score: Math.round(crowdScore), weight: Math.round(wCrowd * 100) });
+  }
+
+  return { score: Math.round(composite), breakdown };
 }
 
 export default function Dashboard() {
@@ -271,7 +292,7 @@ export default function Dashboard() {
 
           {/* Fila 4: Indice de Apertura + OONI */}
           <div className="grid-1-2">
-            <BlockingIndexGauge {...computeBlockingIndex(outages, traffic, blocking, mlab)} />
+            <BlockingIndexGauge {...computeBlockingIndex(outages, traffic, blocking, mlab, crowdStats)} />
             <Suspense fallback={<p>Cargando graficos...</p>}>
               <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="ooni" />
             </Suspense>
