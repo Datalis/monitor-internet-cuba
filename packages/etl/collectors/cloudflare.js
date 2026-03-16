@@ -33,6 +33,26 @@ export async function collectCloudflare() {
       traffic_score: values[i] != null ? parseFloat(values[i]) * 100 : null,
     }));
     allMetrics.push(...metrics);
+
+    // Inline annotations from timeseries meta (most reliable source for active outages)
+    const inlineAnnotations = timeseries.result.meta?.confidenceInfo?.annotations || [];
+    for (const ann of inlineAnnotations) {
+      if (ann.eventType === 'OUTAGE' || ann.eventType === 'ANOMALY') {
+        allMetrics.push({
+          timestamp: new Date(ann.startDate),
+          metadata: { source: 'cloudflare-alert', province_id: null, country: 'CU' },
+          alert_type: ann.eventType.toLowerCase(),
+          event_type: ann.eventType,
+          description: ann.description || null,
+          start_date: ann.startDate,
+          end_date: ann.endDate || null,
+          linked_url: ann.linkedUrl || null,
+          is_instantaneous: ann.isInstantaneous || false,
+          data_source: ann.dataSource || null,
+        });
+        console.log(`[Cloudflare] Inline annotation: ${ann.eventType} - ${ann.description}`);
+      }
+    }
   } else {
     console.warn('[Cloudflare] No timeseries data');
   }
@@ -58,6 +78,58 @@ export async function collectCloudflare() {
 
   if (summaryMetric.device_mobile_pct || summaryMetric.human_pct) {
     allMetrics.push(summaryMetric);
+  }
+
+  // Cloudflare Radar annotations: verified outages affecting Cuba
+  const annotations = await fetchJson(
+    `${BASE}/annotations/outages?dateRange=2d&format=json&location=CU`,
+    { headers },
+  ).catch(err => { console.error('[Cloudflare] annotations error:', err.message); return null; });
+
+  if (annotations?.result?.annotations?.length) {
+    for (const ann of annotations.result.annotations) {
+      const isCuba = (ann.locations || []).some(l => l.toUpperCase() === 'CU')
+        || (ann.asns || []).some(a => String(a) === '27725');
+      if (!isCuba) continue;
+
+      allMetrics.push({
+        timestamp: new Date(ann.startDate),
+        metadata: { source: 'cloudflare-alert', province_id: null, country: 'CU' },
+        alert_type: 'outage',
+        event_type: ann.eventType || 'unknown',
+        outage_cause: ann.outage?.outageCause || null,
+        outage_type: ann.outage?.outageType || null,
+        description: ann.description || null,
+        start_date: ann.startDate,
+        end_date: ann.endDate || null,
+        linked_url: ann.linkedUrl || null,
+      });
+    }
+    console.log(`[Cloudflare] Found ${annotations.result.annotations.length} outage annotations`);
+  }
+
+  // Cloudflare Radar traffic anomalies for Cuba
+  const anomalies = await fetchJson(
+    `${BASE}/traffic_anomalies?dateRange=2d&format=json&location=CU&limit=10`,
+    { headers },
+  ).catch(err => { console.error('[Cloudflare] anomalies error:', err.message); return null; });
+
+  if (anomalies?.result?.trafficAnomalies?.length) {
+    for (const anom of anomalies.result.trafficAnomalies) {
+      allMetrics.push({
+        timestamp: new Date(anom.startDate),
+        metadata: { source: 'cloudflare-alert', province_id: null, country: 'CU' },
+        alert_type: 'anomaly',
+        event_type: anom.type || 'unknown',
+        status: anom.status || null,
+        start_date: anom.startDate,
+        end_date: anom.endDate || null,
+        magnitude: anom.magnitude || null,
+        asn: anom.asnDetails?.asn || null,
+        asn_name: anom.asnDetails?.name || null,
+      });
+    }
+    console.log(`[Cloudflare] Found ${anomalies.result.trafficAnomalies.length} traffic anomalies`);
   }
 
   if (allMetrics.length) {

@@ -103,7 +103,7 @@ export const ALERT_CONDITIONS: AlertRule[] = [
     id: 'cloudflare_traffic_drop',
     field: 'cloudflare.traffic_score',
     condition: 'drops_below',
-    threshold: 25,
+    threshold: 29,
     sustained_minutes: 15,
     message: '📉 Cuba: caída de tráfico HTTP detectada por Cloudflare Radar.',
   },

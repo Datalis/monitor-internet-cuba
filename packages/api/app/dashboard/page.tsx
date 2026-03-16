@@ -4,6 +4,7 @@ import { useEffect, useState, lazy, Suspense } from 'react';
 
 const Charts = lazy(() => import('./charts'));
 const CubaSpeedMap = lazy(() => import('./cuba-map'));
+import ShareButtons from '../components/share-buttons';
 
 interface Metric {
   timestamp: string;
@@ -11,13 +12,47 @@ interface Metric {
   [key: string]: unknown;
 }
 
+interface CfAlert {
+  alert_type: string;
+  event_type: string;
+  outage_cause?: string;
+  outage_type?: string;
+  description?: string;
+  start_date: string;
+  end_date?: string;
+  status?: string;
+  magnitude?: number;
+  linked_url?: string;
+}
+
 interface OutageData {
   active_outages: number;
+  active_cf_alerts: number;
   latest_ioda: { outage_score: number; outage_detected: boolean; timestamp: string } | null;
   latest_ripe: { bgp_prefix_count: number; bgp_visibility_pct: number; timestamp: string } | null;
+  latest_cf_alert: CfAlert | null;
+  cloudflare_alerts: CfAlert[];
   ioda: Metric[];
   ripe: Metric[];
 }
+
+const OUTAGE_CAUSE_ES: Record<string, string> = {
+  POWER_OUTAGE: 'Apagon electrico',
+  CABLE_CUT: 'Corte de cable',
+  GOVERNMENT_ORDER: 'Orden gubernamental',
+  TECHNICAL_FAILURE: 'Fallo tecnico',
+  NATURAL_DISASTER: 'Desastre natural',
+  MAINTENANCE: 'Mantenimiento',
+  CYBER_ATTACK: 'Ciberataque',
+  UNKNOWN: 'Causa desconocida',
+};
+
+const OUTAGE_TYPE_ES: Record<string, string> = {
+  NATIONWIDE: 'Alcance nacional',
+  REGIONAL: 'Alcance regional',
+  LOCAL: 'Alcance local',
+  MULTI_LOCATION: 'Multiples ubicaciones',
+};
 
 interface CfSummary {
   device_mobile_pct?: number;
@@ -68,14 +103,20 @@ function computeBlockingIndex(
   }
   const hasCrowd = crowd != null && crowd.test_count > 0;
 
-  // Weights: with crowdsourced data, redistribute to include it
-  const wIoda = hasCrowd ? 0.25 : 0.30;
-  const wBgp = hasCrowd ? 0.20 : 0.25;
-  const wTraffic = hasCrowd ? 0.20 : 0.25;
-  const wOoni = hasCrowd ? 0.15 : 0.20;
-  const wCrowd = hasCrowd ? 0.20 : 0;
+  // Cloudflare verified outage: if active, force traffic score to 0
+  const hasCfOutage = (outages?.active_cf_alerts ?? 0) > 0;
+  const cfOutageScore = hasCfOutage ? 0 : 100;
 
-  let composite = iodaScore * wIoda + bgpScore * wBgp + trafficScore * wTraffic + ooniScore * wOoni + crowdScore * wCrowd;
+  // Weights: Cloudflare outage gets highest weight when active
+  const wIoda = hasCfOutage ? 0.15 : hasCrowd ? 0.25 : 0.30;
+  const wBgp = hasCfOutage ? 0.10 : hasCrowd ? 0.20 : 0.25;
+  const wTraffic = hasCfOutage ? 0.20 : hasCrowd ? 0.20 : 0.25;
+  const wOoni = hasCfOutage ? 0.10 : hasCrowd ? 0.15 : 0.20;
+  const wCrowd = hasCrowd ? (hasCfOutage ? 0.10 : 0.20) : 0;
+  const wCfOutage = hasCfOutage ? 0.35 : 0;
+
+  let composite = iodaScore * wIoda + bgpScore * wBgp + trafficScore * wTraffic
+    + ooniScore * wOoni + crowdScore * wCrowd + cfOutageScore * wCfOutage;
 
   const dl = mlab[0]?.download_speed_mbps as number | undefined;
   const lat = mlab[0]?.latency_ms as number | undefined;
@@ -84,12 +125,16 @@ function computeBlockingIndex(
   if (lat != null && lat > 500) penalty += 2;
   composite = Math.max(0, Math.min(100, composite - penalty));
 
-  const breakdown: SubScore[] = [
+  const breakdown: SubScore[] = [];
+  if (hasCfOutage) {
+    breakdown.push({ label: 'Cloudflare (outage)', score: Math.round(cfOutageScore), weight: Math.round(wCfOutage * 100) });
+  }
+  breakdown.push(
+    { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: Math.round(wTraffic * 100) },
     { label: 'IODA (interrupciones)', score: Math.round(iodaScore), weight: Math.round(wIoda * 100) },
     { label: 'BGP (visibilidad)', score: Math.round(bgpScore), weight: Math.round(wBgp * 100) },
-    { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: Math.round(wTraffic * 100) },
     { label: 'Censura (OONI)', score: Math.round(ooniScore), weight: Math.round(wOoni * 100) },
-  ];
+  );
   if (hasCrowd) {
     breakdown.push({ label: 'Velocidad (usuarios)', score: Math.round(crowdScore), weight: Math.round(wCrowd * 100) });
   }
@@ -145,38 +190,88 @@ export default function Dashboard() {
 
   const isOutage = outages?.latest_ioda?.outage_detected || false;
   const lowVisibility = (outages?.latest_ripe?.bgp_visibility_pct ?? 1) < 0.7;
-  const isAlert = isOutage || lowVisibility;
-  const statusColor = isOutage ? '#ef4444' : lowVisibility ? '#f59e0b' : '#22c55e';
-  const statusText = isOutage ? 'OUTAGE DETECTADO' : lowVisibility ? 'DEGRADADO' : 'OPERATIVO';
+
+  // Cloudflare traffic drop detection: average of last 6 readings below threshold
+  const recentTrafficScores = traffic.slice(0, 6).map(d => d.traffic_score as number).filter(v => v != null);
+  const avgRecentTraffic = recentTrafficScores.length > 0
+    ? recentTrafficScores.reduce((a, b) => a + b, 0) / recentTrafficScores.length
+    : 100;
+  const trafficDrop = avgRecentTraffic < 29;
+
+  // Cloudflare Radar verified outage/anomaly alerts
+  const hasCfAlert = (outages?.active_cf_alerts ?? 0) > 0;
+  const cfAlertIsOutage = outages?.latest_cf_alert?.alert_type === 'outage';
+
+  const isAlert = isOutage || lowVisibility || trafficDrop || hasCfAlert;
+  const statusColor = (isOutage || cfAlertIsOutage) ? '#ef4444' : (lowVisibility || trafficDrop || hasCfAlert) ? '#f59e0b' : '#22c55e';
+  const statusText = (isOutage || cfAlertIsOutage) ? 'OUTAGE DETECTADO' : (lowVisibility || trafficDrop || hasCfAlert) ? 'DEGRADADO' : 'OPERATIVO';
   const activeOutages = outages?.active_outages ?? 0;
   const outageTagColor = activeOutages >= 2 ? '#ef4444' : activeOutages >= 1 ? '#f59e0b' : '#94a3b8';
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px 16px' }}>
-      {!loading && isAlert && (
-        <div style={{
-          background: isOutage ? '#ef444422' : '#f59e0b22',
-          border: `2px solid ${isOutage ? '#ef4444' : '#f59e0b'}`,
-          borderRadius: 12,
-          padding: '16px 20px',
-          marginBottom: 20,
-          animation: isOutage ? 'pulse-alert 2s ease-in-out infinite' : undefined,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{ fontSize: 32 }}>{isOutage ? '\u{1F6A8}' : '\u26A0\uFE0F'}</span>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: isOutage ? '#ef4444' : '#f59e0b' }}>
-                {isOutage ? 'ALERTA: Outage de Internet detectado en Cuba' : 'ALERTA: Visibilidad BGP degradada'}
-              </div>
-              <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
-                {isOutage
-                  ? `IODA ha detectado una interrupcion activa. Score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}`
-                  : `La visibilidad BGP de ETECSA (AS27725) esta por debajo del 70%: ${((outages?.latest_ripe?.bgp_visibility_pct ?? 0) * 100).toFixed(1)}%`}
+      {!loading && isAlert && (() => {
+        const isCritical = isOutage || cfAlertIsOutage;
+        const alertColor = isCritical ? '#ef4444' : '#f59e0b';
+        const cfAlert = outages?.latest_cf_alert;
+        const cfStartTime = cfAlert?.start_date
+          ? new Date(cfAlert.start_date).toLocaleString('es-CU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : null;
+
+        return (
+          <div style={{
+            background: alertColor + '22',
+            border: `2px solid ${alertColor}`,
+            borderRadius: 12,
+            padding: '16px 20px',
+            marginBottom: 20,
+            animation: isCritical ? 'pulse-alert 2s ease-in-out infinite' : undefined,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 32 }}>{isCritical ? '\u{1F6A8}' : '\u26A0\uFE0F'}</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: alertColor }}>
+                  {isOutage ? 'ALERTA: Outage de Internet detectado en Cuba'
+                    : cfAlertIsOutage ? 'ALERTA: Outage verificado por Cloudflare Radar'
+                    : hasCfAlert ? 'ALERTA: Anomalia de trafico detectada por Cloudflare Radar'
+                    : trafficDrop ? 'ALERTA: Caida de trafico HTTP detectada'
+                    : 'ALERTA: Visibilidad BGP degradada'}
+                </div>
+                {/* Cloudflare alert description */}
+                {hasCfAlert && cfAlert?.description && (
+                  <div style={{ fontSize: 14, color: '#e2e8f0', marginTop: 6, fontWeight: 500 }}>
+                    {cfAlert.description}
+                  </div>
+                )}
+                <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
+                  {isOutage
+                    ? `IODA ha detectado una interrupcion activa. Score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}`
+                    : hasCfAlert && cfAlert
+                    ? `${cfAlert.outage_cause ? `Causa: ${OUTAGE_CAUSE_ES[cfAlert.outage_cause] || cfAlert.outage_cause}` : cfAlert.event_type || 'Alerta activa'}${cfAlert.outage_type ? ` — ${OUTAGE_TYPE_ES[cfAlert.outage_type] || cfAlert.outage_type}` : ''}${cfStartTime ? ` — Desde ${cfStartTime}` : ''}`
+                    : trafficDrop
+                    ? `El trafico HTTP desde Cuba cayo por debajo del umbral de alerta (25). Score promedio reciente: ${avgRecentTraffic.toFixed(1)}`
+                    : `La visibilidad BGP de ETECSA (AS27725) esta por debajo del 70%: ${((outages?.latest_ripe?.bgp_visibility_pct ?? 0) * 100).toFixed(1)}%`}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <ShareButtons
+                    compact
+                    text={isOutage
+                      ? `\u{1F6A8} Outage de internet detectado en Cuba. IODA score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}. Monitorea en tiempo real:`
+                      : cfAlertIsOutage
+                      ? `\u{1F6A8} Outage verificado por Cloudflare Radar en Cuba${cfAlert?.outage_cause ? ` (${OUTAGE_CAUSE_ES[cfAlert.outage_cause]?.toLowerCase() || cfAlert.outage_cause})` : ''}. Monitorea en tiempo real:`
+                      : hasCfAlert
+                      ? `\u26A0\uFE0F Anomalia de trafico detectada en Cuba por Cloudflare Radar. Monitorea en tiempo real:`
+                      : trafficDrop
+                      ? `\u26A0\uFE0F Caida de trafico HTTP detectada en Cuba. Score: ${avgRecentTraffic.toFixed(1)}. Monitorea en tiempo real:`
+                      : `\u26A0\uFE0F Visibilidad BGP degradada en Cuba: ${((outages?.latest_ripe?.bgp_visibility_pct ?? 0) * 100).toFixed(1)}%. Monitorea en tiempo real:`
+                    }
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       <style>{`
         @keyframes pulse-alert { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
         .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
@@ -246,7 +341,18 @@ export default function Dashboard() {
         <p style={{ textAlign: 'center', padding: 40 }}>Cargando datos...</p>
       ) : (
         <>
-          {/* Fila 1: Crowdsourced speed test stats */}
+          {/* Fila 1: Grafica de trafico principal */}
+          <Suspense fallback={<p>Cargando graficos...</p>}>
+            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
+          </Suspense>
+
+          {/* Fila 2: Datos de Cloudflare/infraestructura */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
+            <StatCard label="Descarga (Cloudflare)" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
+            <StatCard label="Latencia (Cloudflare)" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
+          </div>
+
+          {/* Fila 3: Crowdsourced speed test stats */}
           <div className="grid-3">
             <StatCard label="Descarga (usuarios)" value={fmtSpeed(crowdStats?.avg_download)} sub="Promedio crowdsourced" hint="Velocidad promedio de descarga reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
             <StatCard label="Subida (usuarios)" value={fmtSpeed(crowdStats?.avg_upload)} sub="Promedio crowdsourced" hint="Velocidad promedio de subida reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
@@ -277,17 +383,6 @@ export default function Dashboard() {
             <Suspense fallback={<p>Cargando mapa...</p>}>
               <CubaSpeedMap data={crowdByProvince} />
             </Suspense>
-          </div>
-
-          {/* Fila 2: Grafica de trafico principal */}
-          <Suspense fallback={<p>Cargando graficos...</p>}>
-            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
-          </Suspense>
-
-          {/* Fila 3: Datos de Cloudflare/infraestructura */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
-            <StatCard label="Descarga (Cloudflare)" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
-            <StatCard label="Latencia (Cloudflare)" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
           </div>
 
           {/* Fila 4: Indice de Apertura + OONI */}

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Area, AreaChart,
-  BarChart, Bar, Legend,
+  BarChart, Bar, Legend, ReferenceArea,
 } from 'recharts';
 
 interface Metric {
@@ -13,10 +13,24 @@ interface Metric {
   [key: string]: unknown;
 }
 
+interface CfAlert {
+  alert_type: string;
+  event_type: string;
+  outage_cause?: string;
+  outage_type?: string;
+  description?: string;
+  start_date: string;
+  end_date?: string;
+  status?: string;
+}
+
 interface OutageData {
   active_outages: number;
+  active_cf_alerts: number;
   latest_ioda: { outage_score: number; outage_detected: boolean; timestamp: string } | null;
   latest_ripe: { bgp_prefix_count: number; bgp_visibility_pct: number; timestamp: string } | null;
+  latest_cf_alert: CfAlert | null;
+  cloudflare_alerts: CfAlert[];
   ioda: Metric[];
   ripe: Metric[];
 }
@@ -46,6 +60,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
 
   const trafficData = traffic.map(d => ({
     time: fmtTime(d.timestamp),
+    ts: new Date(d.timestamp).getTime(),
     score: Math.round((d.traffic_score as number) * 100) / 100,
   })).reverse();
 
@@ -66,21 +81,74 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
     latency: d.latency_ms as number,
   })).reverse();
 
+  // Find outage zones from Cloudflare alerts to shade on chart
+  const outageZones: { startTime: string; endTime: string; label: string }[] = [];
+  if (outages?.cloudflare_alerts && trafficData.length > 0) {
+    for (const alert of outages.cloudflare_alerts) {
+      if (alert.alert_type !== 'outage') continue;
+      const alertStart = new Date(alert.start_date).getTime();
+      const alertEnd = alert.end_date ? new Date(alert.end_date).getTime() : Date.now();
+
+      // Find the first traffic data point at or after alert start
+      const startPoint = trafficData.find(d => d.ts >= alertStart);
+      // Find the last traffic data point at or before alert end
+      const endPoint = [...trafficData].reverse().find(d => d.ts <= alertEnd);
+
+      if (startPoint) {
+        outageZones.push({
+          startTime: startPoint.time,
+          endTime: endPoint ? endPoint.time : trafficData[trafficData.length - 1].time,
+          label: alert.description || alert.outage_cause || 'Outage',
+        });
+      }
+    }
+  }
+
   const chartStyle = { background: '#1e293b', borderRadius: 12, padding: '16px 8px 8px', marginBottom: 16 };
 
   if (section === 'traffic') {
     return (
       <div style={chartStyle}>
-        <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>Trafico HTTP Cuba (Cloudflare Radar)</h3>
-        <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Score relativo de trafico (0-100). Por debajo de 25 se considera anomalo.</p>
-        <ResponsiveContainer width="100%" height={200}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '0 8px' }}>
+          <div>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: 14, color: '#94a3b8' }}>Trafico HTTP Cuba (Cloudflare Radar)</h3>
+            <p style={{ margin: '0 0 12px 0', fontSize: 11, color: '#475569' }}>Score relativo de trafico (0-100). Por debajo de 25 se considera anomalo.</p>
+          </div>
+          {outageZones.length > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '4px 10px', borderRadius: 6,
+              background: '#ef444422', border: '1px solid #ef4444',
+              fontSize: 11, color: '#ef4444', fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}>
+              <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#ef444440', border: '1px solid #ef4444' }} />
+              Outage activo
+            </div>
+          )}
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={trafficData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
             <XAxis dataKey="time" tick={{ fill: '#64748b', fontSize: 10 }} interval="preserveStartEnd" />
             <YAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 100]} />
             <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155' }} />
+            {outageZones.map((zone, i) => (
+              <ReferenceArea
+                key={i}
+                x1={zone.startTime}
+                x2={zone.endTime}
+                y1={0}
+                y2={100}
+                fill="#ef4444"
+                fillOpacity={0.15}
+                stroke="#ef4444"
+                strokeOpacity={0.3}
+                label={{ value: zone.label, fill: '#ef4444', fontSize: 10, position: 'insideTopRight' }}
+              />
+            ))}
             <Area type="monotone" dataKey="score" stroke="#3b82f6" fill="#3b82f620" strokeWidth={2} />
-            <ReferenceLine y={25} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Umbral alerta', fill: '#ef4444', fontSize: 10 }} />
+            <ReferenceLine y={29} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Umbral alerta', fill: '#ef4444', fontSize: 10 }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
