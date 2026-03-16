@@ -159,7 +159,7 @@ export default function Dashboard() {
         const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes] = await Promise.all([
           fetch('/api/outages?hours=48').then(r => r.json()),
           fetch('/api/blocking?days=15').then(r => r.json()),
-          fetch('/api/metrics?source=cloudflare&hours=168').then(r => r.json()),
+          fetch('/api/metrics?source=cloudflare&hours=24').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare-summary&hours=24&limit=1').then(r => r.json()),
           fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
           fetch('/api/speedtest/stats?hours=168').then(r => r.json()).catch(() => null),
