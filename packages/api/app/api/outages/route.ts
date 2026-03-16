@@ -26,16 +26,24 @@ export async function GET(req: NextRequest) {
 
   const outageEvents = iodaData.filter(d => d.outage_detected);
 
-  // Cloudflare active alerts: outages or anomalies without end_date or end_date in the future
+  // Cloudflare active alerts: deduplicate by start_date + alert_type, keep richest record
   const now = new Date();
-  const activeCfAlerts = cfAlerts.filter(a =>
-    !a.end_date || new Date(a.end_date) > now
-  );
+  const seen = new Map<string, typeof cfAlerts[0]>();
+  for (const a of cfAlerts) {
+    if (a.end_date && new Date(a.end_date) <= now) continue;
+    const key = `${a.alert_type}:${a.start_date}`;
+    const existing = seen.get(key);
+    // Keep the record with more data (e.g. has outage_cause)
+    if (!existing || (a.outage_cause && !existing.outage_cause)) {
+      seen.set(key, a);
+    }
+  }
+  const activeCfAlerts = Array.from(seen.values());
 
   return NextResponse.json({
     ioda: iodaData,
     ripe: ripeData,
-    cloudflare_alerts: cfAlerts,
+    cloudflare_alerts: activeCfAlerts,
     active_cf_alerts: activeCfAlerts.length,
     active_outages: outageEvents.length + activeCfAlerts.filter(a => a.alert_type === 'outage').length,
     latest_ioda: iodaData[0] || null,
