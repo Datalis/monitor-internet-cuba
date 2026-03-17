@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'Cuba Internet Monitor — Estado de internet en Cuba en tiempo real',
   description: 'Monitoreo H24 del estado de internet en Cuba. Velocidad, latencia, interrupciones, censura y visibilidad BGP. Un proyecto de CubaPK y elToque.',
-  keywords: ['Cuba', 'internet', 'monitor', 'velocidad', 'ETECSA', 'outage', 'censura', 'BGP', 'OONI', 'speed test'],
+  keywords: ['Cuba', 'internet', 'monitor', 'velocidad', 'ETECSA', 'interrupción', 'censura', 'BGP', 'OONI', 'speed test'],
   authors: [{ name: 'CubaPK', url: 'https://cubapk.com' }, { name: 'elToque', url: 'https://eltoque.com' }],
   openGraph: {
     title: 'Cuba Internet Monitor',

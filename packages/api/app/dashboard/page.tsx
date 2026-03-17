@@ -127,7 +127,7 @@ function computeBlockingIndex(
 
   const breakdown: SubScore[] = [];
   if (hasCfOutage) {
-    breakdown.push({ label: 'Cloudflare (outage)', score: Math.round(cfOutageScore), weight: Math.round(wCfOutage * 100) });
+    breakdown.push({ label: 'Cloudflare (interrupción)', score: Math.round(cfOutageScore), weight: Math.round(wCfOutage * 100) });
   }
   breakdown.push(
     { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: Math.round(wTraffic * 100) },
@@ -204,7 +204,7 @@ export default function Dashboard() {
 
   const isAlert = isOutage || lowVisibility || trafficDrop || hasCfAlert;
   const statusColor = (isOutage || cfAlertIsOutage) ? '#ef4444' : (lowVisibility || trafficDrop || hasCfAlert) ? '#f59e0b' : '#22c55e';
-  const statusText = (isOutage || cfAlertIsOutage) ? 'OUTAGE DETECTADO' : (lowVisibility || trafficDrop || hasCfAlert) ? 'DEGRADADO' : 'OPERATIVO';
+  const statusText = (isOutage || cfAlertIsOutage) ? 'INTERRUPCIÓN DETECTADA' : (lowVisibility || trafficDrop || hasCfAlert) ? 'DEGRADADO' : 'OPERATIVO';
   const activeOutages = outages?.active_outages ?? 0;
   const outageTagColor = activeOutages >= 2 ? '#ef4444' : activeOutages >= 1 ? '#f59e0b' : '#94a3b8';
 
@@ -231,8 +231,8 @@ export default function Dashboard() {
               <span style={{ fontSize: 32 }}>{isCritical ? '\u{1F6A8}' : '\u26A0\uFE0F'}</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: alertColor }}>
-                  {isOutage ? 'ALERTA: Outage de Internet detectado en Cuba'
-                    : cfAlertIsOutage ? 'ALERTA: Outage verificado por Cloudflare Radar'
+                  {isOutage ? 'ALERTA: Interrupción de internet detectada en Cuba'
+                    : cfAlertIsOutage ? 'ALERTA: Interrupción verificada por Cloudflare Radar'
                     : hasCfAlert ? 'ALERTA: Anomalia de trafico detectada por Cloudflare Radar'
                     : trafficDrop ? 'ALERTA: Caida de trafico HTTP detectada'
                     : 'ALERTA: Visibilidad BGP degradada'}
@@ -256,9 +256,9 @@ export default function Dashboard() {
                   <ShareButtons
                     compact
                     text={isOutage
-                      ? `\u{1F6A8} Outage de internet detectado en Cuba. IODA score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}. Monitorea en tiempo real:`
+                      ? `\u{1F6A8} Interrupción de internet detectada en Cuba. IODA score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}. Monitorea en tiempo real:`
                       : cfAlertIsOutage
-                      ? `\u{1F6A8} Outage verificado por Cloudflare Radar en Cuba${cfAlert?.outage_cause ? ` (${OUTAGE_CAUSE_ES[cfAlert.outage_cause]?.toLowerCase() || cfAlert.outage_cause})` : ''}. Monitorea en tiempo real:`
+                      ? `\u{1F6A8} Interrupción verificada por Cloudflare Radar en Cuba${cfAlert?.outage_cause ? ` (${OUTAGE_CAUSE_ES[cfAlert.outage_cause]?.toLowerCase() || cfAlert.outage_cause})` : ''}. Monitorea en tiempo real:`
                       : hasCfAlert
                       ? `\u26A0\uFE0F Anomalia de trafico detectada en Cuba por Cloudflare Radar. Monitorea en tiempo real:`
                       : trafficDrop

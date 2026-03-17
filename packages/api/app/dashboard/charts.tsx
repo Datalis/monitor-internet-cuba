@@ -98,7 +98,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
         outageZones.push({
           startTime: startPoint.time,
           endTime: endPoint ? endPoint.time : trafficData[trafficData.length - 1].time,
-          label: alert.description || alert.outage_cause || 'Outage',
+          label: alert.description || alert.outage_cause || 'Interrupción',
         });
       }
     }
@@ -123,7 +123,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
               whiteSpace: 'nowrap',
             }}>
               <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#ef444440', border: '1px solid #ef4444' }} />
-              Outage activo
+              Interrupción activa
             </div>
           )}
         </div>
@@ -236,8 +236,8 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
         </div>
 
         <div style={chartStyle}>
-          <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>IODA Outage Score</h3>
-          <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Indice compuesto de interrupcion (0=normal, 1=apagon total). Por encima de 0.5 se declara outage.</p>
+          <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>IODA — Índice de Interrupción</h3>
+          <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Indice compuesto de interrupcion (0=normal, 1=apagon total). Por encima de 0.5 se declara interrupción.</p>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={iodaData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -245,7 +245,7 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
               <YAxis tick={{ fill: '#64748b', fontSize: 10 }} domain={[0, 1]} />
               <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155' }} />
               <Line type="monotone" dataKey="score" stroke="#f59e0b" strokeWidth={2} dot={false} />
-              <ReferenceLine y={0.5} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Outage', fill: '#ef4444', fontSize: 10 }} />
+              <ReferenceLine y={0.5} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'Interrupción', fill: '#ef4444', fontSize: 10 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
