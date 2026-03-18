@@ -28,9 +28,12 @@ export async function GET(req: NextRequest) {
 
   // Cloudflare active alerts: deduplicate by start_date + alert_type, keep richest record
   const now = new Date();
+  const maxAlertAge = 24 * 60 * 60 * 1000; // 24h: if no end_date and older than this, consider resolved
   const seen = new Map<string, typeof cfAlerts[0]>();
   for (const a of cfAlerts) {
     if (a.end_date && new Date(a.end_date) <= now) continue;
+    // If no end_date but start_date is too old, treat as stale/resolved
+    if (!a.end_date && a.start_date && (now.getTime() - new Date(a.start_date).getTime()) > maxAlertAge) continue;
     const key = `${a.alert_type}:${a.start_date}`;
     const existing = seen.get(key);
     // Keep the record with more data (e.g. has outage_cause)

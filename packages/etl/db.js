@@ -30,6 +30,23 @@ export async function insertMetrics(metrics) {
     existing.map(e => `${e.timestamp.toISOString()}|${e.metadata?.source}`)
   );
 
+  // For cloudflare-alert duplicates, update end_date if the new record has one
+  const duplicateAlerts = metrics.filter(m => {
+    const key = `${m.timestamp.toISOString()}|${m.metadata?.source}`;
+    return existingKeys.has(key) && m.metadata?.source === 'cloudflare-alert' && m.end_date;
+  });
+
+  if (duplicateAlerts.length) {
+    const bulkOps = duplicateAlerts.map(m => ({
+      updateOne: {
+        filter: { timestamp: m.timestamp, 'metadata.source': 'cloudflare-alert' },
+        update: { $set: { end_date: m.end_date, ...(m.outage_cause ? { outage_cause: m.outage_cause } : {}), ...(m.outage_type ? { outage_type: m.outage_type } : {}) } },
+      },
+    }));
+    const result = await col.bulkWrite(bulkOps, { ordered: false });
+    console.log(`Updated ${result.modifiedCount} cloudflare-alert records with end_date`);
+  }
+
   const newMetrics = metrics.filter(m => {
     const key = `${m.timestamp.toISOString()}|${m.metadata?.source}`;
     return !existingKeys.has(key);
