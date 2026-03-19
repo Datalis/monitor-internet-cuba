@@ -79,7 +79,15 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
     time: fmtDay(d.timestamp),
     download: d.download_speed_mbps as number,
     latency: d.latency_ms as number,
+    globalDownload: d.global_download_mbps as number | null,
+    globalLatency: d.global_latency_ms as number | null,
   })).reverse();
+
+  // Compute average global values for reference lines
+  const globalDownloads = mlabData.filter(d => d.globalDownload != null).map(d => d.globalDownload!);
+  const avgGlobalDownload = globalDownloads.length > 0 ? globalDownloads.reduce((a, b) => a + b, 0) / globalDownloads.length : null;
+  const globalLatencies = mlabData.filter(d => d.globalLatency != null).map(d => d.globalLatency!);
+  const avgGlobalLatency = globalLatencies.length > 0 ? globalLatencies.reduce((a, b) => a + b, 0) / globalLatencies.length : null;
 
   // Find outage zones from Cloudflare alerts to shade on chart
   const outageZones: { startTime: string; endTime: string; label: string }[] = [];
@@ -190,28 +198,40 @@ export default function Charts({ blocking, traffic, outages, mlab, section }: Pr
         <div className="grid-rest">
           <div style={chartStyle}>
             <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>Velocidad de Descarga (Cloudflare Radar)</h3>
-            <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Velocidad de descarga medida por speed.cloudflare.com desde Cuba.</p>
+            <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>
+              Cuba vs promedio global. Linea punteada = promedio mundial{avgGlobalDownload != null ? ` (${avgGlobalDownload.toFixed(1)} Mbps)` : ''}.
+            </p>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={mlabData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="time" tick={{ fill: '#64748b', fontSize: 10 }} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: '#64748b', fontSize: 10 }} unit=" Mbps" />
                 <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155' }} />
-                <Line type="monotone" dataKey="download" stroke="#8b5cf6" strokeWidth={2} dot={false} name="Descarga (Mbps)" />
+                <Line type="monotone" dataKey="download" stroke="#8b5cf6" strokeWidth={2} dot={false} name="Cuba (Mbps)" />
+                <Line type="monotone" dataKey="globalDownload" stroke="#64748b" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Global (Mbps)" />
+                {avgGlobalDownload != null && (
+                  <ReferenceLine y={avgGlobalDownload} stroke="#64748b" strokeDasharray="3 3" label={{ value: `Global: ${avgGlobalDownload.toFixed(1)}`, fill: '#64748b', fontSize: 10, position: 'right' }} />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           <div style={chartStyle}>
             <h3 style={{ margin: '0 0 4px 8px', fontSize: 14, color: '#94a3b8' }}>Latencia (Cloudflare Radar)</h3>
-            <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>Latencia promedio medida por speed.cloudflare.com desde Cuba.</p>
+            <p style={{ margin: '0 0 12px 8px', fontSize: 11, color: '#475569' }}>
+              Cuba vs promedio global. Linea punteada = promedio mundial{avgGlobalLatency != null ? ` (${avgGlobalLatency.toFixed(0)} ms)` : ''}.
+            </p>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={mlabData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="time" tick={{ fill: '#64748b', fontSize: 10 }} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: '#64748b', fontSize: 10 }} unit=" ms" />
                 <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155' }} />
-                <Line type="monotone" dataKey="latency" stroke="#ec4899" strokeWidth={2} dot={false} name="Latencia (ms)" />
+                <Line type="monotone" dataKey="latency" stroke="#ec4899" strokeWidth={2} dot={false} name="Cuba (ms)" />
+                <Line type="monotone" dataKey="globalLatency" stroke="#64748b" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Global (ms)" />
+                {avgGlobalLatency != null && (
+                  <ReferenceLine y={avgGlobalLatency} stroke="#64748b" strokeDasharray="3 3" label={{ value: `Global: ${avgGlobalLatency.toFixed(0)}`, fill: '#64748b', fontSize: 10, position: 'right' }} />
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>

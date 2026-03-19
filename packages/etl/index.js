@@ -6,6 +6,7 @@ import { collectOoni } from './collectors/ooni.js';
 import { collectCloudflare } from './collectors/cloudflare.js';
 import { collectOokla } from './collectors/ookla.js';
 import { collectMlab } from './collectors/mlab.js';
+import { generateWeeklyNote, checkAndReportOutage } from './collectors/ai-notes.js';
 
 async function main() {
   console.log('Cuba Internet Monitor ETL starting...');
@@ -36,6 +37,12 @@ async function main() {
 
   // Speed/Latency (Cloudflare Radar): every 6 hours
   cron.schedule('0 */6 * * *', () => runSafe('Speed', collectMlab));
+
+  // AI Notes: weekly summary every Monday at 9am
+  cron.schedule('0 9 * * 1', () => runSafe('AI Weekly Note', generateWeeklyNote));
+
+  // AI Notes: check for outages every 15 minutes and report if new
+  cron.schedule('3,18,33,48 * * * *', () => runSafe('AI Outage Check', checkAndReportOutage));
 
   console.log('ETL scheduler running. Cron jobs registered.');
 }

@@ -150,19 +150,21 @@ export default function Dashboard() {
   const [mlab, setMlab] = useState<Metric[]>([]);
   const [crowdStats, setCrowdStats] = useState<CrowdStats | null>(null);
   const [crowdByProvince, setCrowdByProvince] = useState<{ province_id: string; avg_download: number; avg_upload: number; avg_latency: number; test_count: number }[]>([]);
+  const [notes, setNotes] = useState<{ type: string; content: string; generated_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOutageInfo, setShowOutageInfo] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
-        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes] = await Promise.all([
+        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes, notesRes] = await Promise.all([
           fetch('/api/outages?hours=48').then(r => r.json()),
           fetch('/api/blocking?days=15').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare&hours=24').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare-summary&hours=24&limit=1').then(r => r.json()),
           fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
           fetch('/api/speedtest/stats?hours=168').then(r => r.json()).catch(() => null),
+          fetch('/api/notes?limit=5').then(r => r.json()).catch(() => null),
         ]);
         setOutages(outRes);
         setBlocking(blockRes.data || []);
@@ -171,6 +173,7 @@ export default function Dashboard() {
         if (summaryRes.data?.[0]) setCfSummary(summaryRes.data[0]);
         if (crowdRes?.summary) setCrowdStats(crowdRes.summary);
         if (crowdRes?.by_province) setCrowdByProvince(crowdRes.by_province);
+        if (notesRes?.data) setNotes(notesRes.data);
       } catch (err) {
         console.error('Failed to load data:', err);
       } finally {
@@ -348,8 +351,23 @@ export default function Dashboard() {
 
           {/* Fila 2: Datos de Cloudflare/infraestructura */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
-            <StatCard label="Descarga (Cloudflare)" value={mlab[0]?.download_speed_mbps != null ? `${(mlab[0].download_speed_mbps as number).toFixed(1)} Mbps` : 'N/A'} sub="Velocidad promedio" hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com) desde Cuba." />
-            <StatCard label="Latencia (Cloudflare)" value={mlab[0]?.latency_ms != null ? `${(mlab[0].latency_ms as number).toFixed(0)} ms` : 'N/A'} sub="Tiempo de respuesta" hint="Latencia promedio medida por Cloudflare Radar desde Cuba. Menor es mejor." />
+            <ComparisonCard
+              label="Descarga (Cloudflare)"
+              cubaValue={mlab[0]?.download_speed_mbps as number | undefined}
+              globalValue={mlab[0]?.global_download_mbps as number | undefined}
+              unit="Mbps"
+              hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com). Cuba vs promedio global."
+              lowerIsBetter={false}
+            />
+            <ComparisonCard
+              label="Latencia (Cloudflare)"
+              cubaValue={mlab[0]?.latency_ms as number | undefined}
+              globalValue={mlab[0]?.global_latency_ms as number | undefined}
+              unit="ms"
+              decimals={0}
+              hint="Latencia promedio medida por Cloudflare Radar. Cuba vs promedio global. Menor es mejor."
+              lowerIsBetter={true}
+            />
           </div>
 
           {/* Fila 3: Crowdsourced speed test stats */}
@@ -405,6 +423,47 @@ export default function Dashboard() {
             <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="rest" />
           </Suspense>
 
+          {/* Notas de IA */}
+          {notes.length > 0 && (
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: '20px 24px', marginTop: 24 }}>
+              <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 18 }}>&#x1F4DD;</span> Notas sobre el estado de internet
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {notes.map((note, i) => (
+                  <div key={i} style={{
+                    background: '#0f172a', borderRadius: 10, padding: '16px 20px',
+                    borderLeft: `3px solid ${note.type === 'outage' ? '#ef4444' : '#3b82f6'}`,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 600,
+                        color: note.type === 'outage' ? '#ef4444' : '#3b82f6',
+                        background: (note.type === 'outage' ? '#ef4444' : '#3b82f6') + '18',
+                        padding: '2px 8px', borderRadius: 4,
+                      }}>
+                        {note.type === 'outage' ? 'ALERTA' : 'RESUMEN SEMANAL'}
+                      </span>
+                      <span style={{ fontSize: 11, color: '#64748b' }}>
+                        {new Date(note.generated_at).toLocaleString('es-CU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                      {note.content}
+                    </div>
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #1e293b' }}>
+                      <ShareButtons
+                        compact
+                        text={note.content.split('\n')[0] || 'Estado de internet en Cuba'}
+                        url="https://internet.cubapk.com/dashboard"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ marginTop: 24 }}>
             <h2 style={{ fontSize: 18, marginBottom: 12 }}>Acerca de los datos</h2>
             <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.8 }}>
@@ -456,6 +515,52 @@ function StatCard({ label, value, sub, hint }: { label: string; value: string; s
       <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 28, fontWeight: 700 }}>{value}</div>
       <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{sub}</div>
+      {hint && <div style={{ color: '#475569', fontSize: 11, marginTop: 8, lineHeight: 1.4 }}>{hint}</div>}
+    </div>
+  );
+}
+
+function ComparisonCard({ label, cubaValue, globalValue, unit, decimals, hint, lowerIsBetter }: {
+  label: string; cubaValue?: number; globalValue?: number; unit: string; decimals?: number; hint?: string; lowerIsBetter: boolean;
+}) {
+  const dec = decimals ?? 1;
+  const cubaStr = cubaValue != null ? `${cubaValue.toFixed(dec)} ${unit}` : 'N/A';
+  const globalStr = globalValue != null ? `${globalValue.toFixed(dec)} ${unit}` : 'N/A';
+
+  let ratio: number | null = null;
+  let ratioColor = '#64748b';
+  let ratioLabel = '';
+  if (cubaValue != null && globalValue != null && globalValue > 0) {
+    ratio = cubaValue / globalValue;
+    const better = lowerIsBetter ? ratio < 1 : ratio > 1;
+    const worse = lowerIsBetter ? ratio > 1 : ratio < 1;
+    ratioColor = better ? '#22c55e' : worse ? '#ef4444' : '#f59e0b';
+    const pct = Math.abs((ratio - 1) * 100);
+    if (pct < 1) {
+      ratioLabel = 'Similar al global';
+    } else {
+      ratioLabel = `${pct.toFixed(0)}% ${better ? 'mejor' : 'peor'} que el global`;
+    }
+  }
+
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 12, padding: 16 }} title={hint}>
+      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <div style={{ fontSize: 28, fontWeight: 700 }}>{cubaStr}</div>
+        <div style={{ fontSize: 13, color: '#64748b' }}>Cuba</div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+        <div style={{ fontSize: 14, color: '#94a3b8' }}>Global: {globalStr}</div>
+        {ratioLabel && (
+          <span style={{
+            fontSize: 11, fontWeight: 600, color: ratioColor,
+            background: ratioColor + '18', padding: '2px 8px', borderRadius: 4,
+          }}>
+            {ratioLabel}
+          </span>
+        )}
+      </div>
       {hint && <div style={{ color: '#475569', fontSize: 11, marginTop: 8, lineHeight: 1.4 }}>{hint}</div>}
     </div>
   );

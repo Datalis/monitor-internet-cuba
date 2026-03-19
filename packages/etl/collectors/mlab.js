@@ -3,8 +3,31 @@ import { insertMetrics } from '../db.js';
 
 // Uses Cloudflare Radar Speed API for Cuba internet quality metrics
 // Fetches daily summaries for the last 7 days using multi-series requests
+// Also fetches global averages for comparison
 
 const RADAR = 'https://api.cloudflare.com/client/v4/radar/quality/speed/summary';
+
+async function fetchSpeedData(headers, location = null) {
+  const params = new URLSearchParams({ format: 'json' });
+  const today = new Date();
+  const days = 7;
+
+  for (let i = 0; i < days; i++) {
+    const end = new Date(today);
+    end.setUTCDate(end.getUTCDate() - i);
+    end.setUTCHours(0, 0, 0, 0);
+
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - 1);
+
+    params.append('name', `day${i}`);
+    params.append('dateStart', start.toISOString());
+    params.append('dateEnd', end.toISOString());
+    if (location) params.append('location', location);
+  }
+
+  return fetchJson(`${RADAR}?${params}`, { headers });
+}
 
 export async function collectMlab() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
@@ -13,45 +36,50 @@ export async function collectMlab() {
     return [];
   }
 
-  console.log('[Speed] Collecting internet speed data for Cuba (7-day history)');
+  console.log('[Speed] Collecting internet speed data for Cuba + global (7-day history)');
 
   try {
     const headers = { Authorization: `Bearer ${token}` };
 
-    // Build multi-series request: one series per day for the last 7 days
-    const params = new URLSearchParams({ format: 'json' });
-    const today = new Date();
-    const days = 7;
+    // Fetch Cuba and global data in parallel
+    const [cubaData, globalData] = await Promise.all([
+      fetchSpeedData(headers, 'CU'),
+      fetchSpeedData(headers),
+    ]);
 
-    for (let i = 0; i < days; i++) {
-      const end = new Date(today);
-      end.setUTCDate(end.getUTCDate() - i);
-      end.setUTCHours(0, 0, 0, 0);
-
-      const start = new Date(end);
-      start.setUTCDate(start.getUTCDate() - 1);
-
-      params.append('name', `day${i}`);
-      params.append('dateStart', start.toISOString());
-      params.append('dateEnd', end.toISOString());
-      params.append('location', 'CU');
-    }
-
-    const data = await fetchJson(`${RADAR}?${params}`, { headers });
-
-    if (!data?.result) {
+    if (!cubaData?.result) {
       console.warn('[Speed] No speed data returned for Cuba');
       return [];
     }
 
+    // Parse global averages per day
+    const globalByDay = {};
+    const today = new Date();
+    const days = 7;
+    if (globalData?.result) {
+      for (let i = 0; i < days; i++) {
+        const s = globalData.result[`day${i}`];
+        if (s && s.bandwidthDownload) {
+          globalByDay[i] = {
+            download: Number(parseFloat(s.bandwidthDownload).toFixed(2)),
+            upload: Number(parseFloat(s.bandwidthUpload || 0).toFixed(2)),
+            latency: Number(parseFloat(s.latencyIdle || s.latencyLoaded || 0).toFixed(2)),
+            jitter: Number(parseFloat(s.jitterIdle || s.jitterLoaded || 0).toFixed(2)),
+          };
+        }
+      }
+    }
+
     const metrics = [];
     for (let i = 0; i < days; i++) {
-      const s = data.result[`day${i}`];
+      const s = cubaData.result[`day${i}`];
       if (!s || !s.bandwidthDownload) continue;
 
       const date = new Date(today);
       date.setUTCDate(date.getUTCDate() - i);
       date.setUTCHours(12, 0, 0, 0);
+
+      const global = globalByDay[i] || {};
 
       metrics.push({
         timestamp: date,
@@ -62,6 +90,11 @@ export async function collectMlab() {
         jitter_ms: Number(parseFloat(s.jitterIdle || s.jitterLoaded || 0).toFixed(2)),
         packet_loss_pct: Number(parseFloat(s.packetLoss || 0).toFixed(3)),
         tests_count: 0,
+        // Global comparison values
+        global_download_mbps: global.download ?? null,
+        global_upload_mbps: global.upload ?? null,
+        global_latency_ms: global.latency ?? null,
+        global_jitter_ms: global.jitter ?? null,
       });
     }
 
@@ -71,7 +104,7 @@ export async function collectMlab() {
 
     const latest = metrics[0];
     if (latest) {
-      console.log(`[Speed] ${metrics.length} days loaded. Latest: ${latest.download_speed_mbps} Mbps down, ${latest.latency_ms} ms latency`);
+      console.log(`[Speed] ${metrics.length} days loaded. Latest: ${latest.download_speed_mbps} Mbps down (global: ${latest.global_download_mbps}), ${latest.latency_ms} ms latency (global: ${latest.global_latency_ms})`);
     }
     return metrics;
   } catch (err) {

@@ -10,8 +10,10 @@ export async function fetchJson(url, options = {}) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const res = await request(url, {
+        method: options.method || 'GET',
         headers,
-        signal: AbortSignal.timeout(30000),
+        body: options.body || undefined,
+        signal: AbortSignal.timeout(options.timeout || 30000),
       });
 
       if (res.statusCode === 429) {
