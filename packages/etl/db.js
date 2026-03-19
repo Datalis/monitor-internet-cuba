@@ -37,14 +37,10 @@ export async function insertMetrics(metrics) {
   });
 
   if (duplicateAlerts.length) {
-    const bulkOps = duplicateAlerts.map(m => ({
-      updateOne: {
-        filter: { timestamp: m.timestamp, 'metadata.source': 'cloudflare-alert' },
-        update: { $set: { end_date: m.end_date, ...(m.outage_cause ? { outage_cause: m.outage_cause } : {}), ...(m.outage_type ? { outage_type: m.outage_type } : {}) } },
-      },
-    }));
-    const result = await col.bulkWrite(bulkOps, { ordered: false });
-    console.log(`Updated ${result.modifiedCount} cloudflare-alert records with end_date`);
+    const alertTimestamps = duplicateAlerts.map(m => m.timestamp);
+    await col.deleteMany({ 'metadata.source': 'cloudflare-alert', timestamp: { $in: alertTimestamps } });
+    await col.insertMany(duplicateAlerts, { ordered: false });
+    console.log(`Replaced ${duplicateAlerts.length} cloudflare-alert records with updated end_date`);
   }
 
   // For mlab duplicates missing global data, delete old and re-insert with global fields
