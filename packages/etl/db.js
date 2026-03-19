@@ -47,6 +47,28 @@ export async function insertMetrics(metrics) {
     console.log(`Updated ${result.modifiedCount} cloudflare-alert records with end_date`);
   }
 
+  // For mlab duplicates, update global comparison fields if present
+  const duplicateMlab = metrics.filter(m => {
+    const key = `${m.timestamp.toISOString()}|${m.metadata?.source}`;
+    return existingKeys.has(key) && m.metadata?.source === 'mlab' && m.global_download_mbps != null;
+  });
+
+  if (duplicateMlab.length) {
+    const bulkOps = duplicateMlab.map(m => ({
+      updateOne: {
+        filter: { timestamp: m.timestamp, 'metadata.source': 'mlab' },
+        update: { $set: {
+          global_download_mbps: m.global_download_mbps,
+          global_upload_mbps: m.global_upload_mbps,
+          global_latency_ms: m.global_latency_ms,
+          global_jitter_ms: m.global_jitter_ms,
+        }},
+      },
+    }));
+    const result = await col.bulkWrite(bulkOps, { ordered: false });
+    console.log(`Updated ${result.modifiedCount} mlab records with global data`);
+  }
+
   const newMetrics = metrics.filter(m => {
     const key = `${m.timestamp.toISOString()}|${m.metadata?.source}`;
     return !existingKeys.has(key);

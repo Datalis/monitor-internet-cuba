@@ -38,8 +38,8 @@ async function main() {
   // Speed/Latency (Cloudflare Radar): every 6 hours
   cron.schedule('0 */6 * * *', () => runSafe('Speed', collectMlab));
 
-  // AI Notes: weekly summary every Monday at 9am
-  cron.schedule('0 9 * * 1', () => runSafe('AI Weekly Note', generateWeeklyNote));
+  // AI Notes: weekly summary every Monday at 9am Cuba time (13:00 UTC = 9am UTC-4 summer)
+  cron.schedule('0 13 * * 1', () => runSafe('AI Weekly Note', generateWeeklyNote));
 
   // AI Notes: check for outages every 15 minutes and report if new
   cron.schedule('3,18,33,48 * * * *', () => runSafe('AI Outage Check', checkAndReportOutage));
