@@ -164,7 +164,7 @@ export default function Dashboard() {
           fetch('/api/metrics?source=cloudflare-summary&hours=24&limit=1').then(r => r.json()),
           fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
           fetch('/api/speedtest/stats?hours=168').then(r => r.json()).catch(() => null),
-          fetch('/api/notes?limit=5').then(r => r.json()).catch(() => null),
+          fetch('/api/notes?limit=1').then(r => r.json()).catch(() => null),
         ]);
         setOutages(outRes);
         setBlocking(blockRes.data || []);

@@ -6,6 +6,14 @@ const OPENAI_API = 'https://api.openai.com/v1/chat/completions';
 const SLACK_POST_MESSAGE = 'https://slack.com/api/chat.postMessage';
 
 export async function POST(req: NextRequest) {
+  // Auth: require INTERNAL_API_SECRET via Authorization header or query param
+  const secret = process.env.INTERNAL_API_SECRET;
+  const provided = req.headers.get('authorization')?.replace('Bearer ', '')
+    || req.nextUrl.searchParams.get('secret');
+  if (!secret || provided !== secret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = req.nextUrl;
   const type = searchParams.get('type') || 'weekly';
 
