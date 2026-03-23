@@ -49,15 +49,20 @@ export async function GET(req: NextRequest) {
 
         {/* Main content */}
         <div style={{ display: 'flex', flex: 1, alignItems: 'center', gap: 60 }}>
-          {/* Gauge */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <svg width="300" height="175" viewBox="0 0 300 175">
-              <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#334155" strokeWidth="20" strokeLinecap="round" />
-              <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke={color} strokeWidth="20" strokeLinecap="round"
-                strokeDasharray={`${fillLength} ${circumference}`} />
-              <text x="150" y="128" textAnchor="middle" fill="white" fontSize="72" fontWeight="700">{score}</text>
-              <text x="150" y="158" textAnchor="middle" fill="#64748b" fontSize="18">de 100</text>
-            </svg>
+          {/* Gauge - SVG arc without text + div overlay for numbers */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            <div style={{ position: 'relative', width: 300, height: 175, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="300" height="175" viewBox="0 0 300 175" style={{ position: 'absolute', top: 0, left: 0 }}>
+                <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#334155" strokeWidth="20" strokeLinecap="round" />
+                <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke={color} strokeWidth="20" strokeLinecap="round"
+                  strokeDasharray={`${fillLength} ${circumference}`} />
+              </svg>
+              {/* Score number overlay */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 30 }}>
+                <div style={{ fontSize: 72, fontWeight: 700, color: 'white', lineHeight: 1 }}>{score}</div>
+                <div style={{ fontSize: 18, color: '#64748b' }}>de 100</div>
+              </div>
+            </div>
             <div style={{ color, fontWeight: 700, fontSize: 28, marginTop: 8 }}>{status}</div>
           </div>
 
