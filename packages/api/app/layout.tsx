@@ -1,4 +1,7 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
+
+const GA_ID = 'G-TP9EGE805R';
 
 export const metadata: Metadata = {
   title: 'Cuba Internet Monitor — Estado de internet en Cuba en tiempo real',
@@ -38,6 +41,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body style={{ margin: 0, fontFamily: 'system-ui, -apple-system, sans-serif', background: '#0f172a', color: '#e2e8f0' }}>
         {children}
+        <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+        <Script id="google-analytics" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${GA_ID}');
+          `}
+        </Script>
       </body>
     </html>
   );
