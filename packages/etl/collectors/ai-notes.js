@@ -176,8 +176,8 @@ async function gatherData(db, type) {
     col.find({ 'metadata.source': 'cloudflare-alert', timestamp: { $gte: since } })
       .sort({ timestamp: -1 }).toArray(),
 
-    // OONI blocking data
-    col.find({ 'metadata.source': 'ooni', timestamp: { $gte: since } })
+    // OONI blocking data (always 7 days for index calculation)
+    col.find({ 'metadata.source': 'ooni', timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } })
       .sort({ timestamp: -1 }).limit(30).toArray(),
 
     // RIPE BGP
@@ -191,6 +191,7 @@ async function gatherData(db, type) {
     // Crowdsourced speed tests
     col.find({ 'metadata.source': 'crowdsourced', timestamp: { $gte: since } })
       .sort({ timestamp: -1 }).toArray(),
+
   ]);
 
   // Compute averages
@@ -254,9 +255,45 @@ async function gatherData(db, type) {
     ? recentTraffic.reduce((sum, d) => sum + (d.traffic_score || 0), 0) / recentTraffic.length
     : 50;
 
-  const latestOoni = ooni[ooni.length - 1];
-  const blockingRate = latestOoni?.blocking_rate ?? 0;
-  const ooniScoreIdx = (1 - blockingRate) * 100;
+  // OONI: 7-day average blocking rate (blocked + anomalies) instead of single day
+  const ooniWithData = ooni.filter(d => d.tests_count > 0);
+  const avgBlockingRate = ooniWithData.length > 0
+    ? ooniWithData.reduce((sum, d) => sum + (d.blocking_rate || 0), 0) / ooniWithData.length
+    : 0;
+  // Also factor in confirmed blocks and anomalies as proportion of total tests
+  const totalOoniTests = ooniWithData.reduce((sum, d) => sum + (d.tests_count || 0), 0);
+  const totalConfirmed = ooniWithData.reduce((sum, d) => sum + (d.confirmed_count || 0), 0);
+  const totalAnomalies = ooniWithData.reduce((sum, d) => sum + (d.anomaly_count || 0), 0);
+  const confirmedAnomalyRate = totalOoniTests > 0
+    ? (totalConfirmed + totalAnomalies) / totalOoniTests
+    : 0;
+  // Weighted combination: 60% avg blocking rate, 40% confirmed+anomaly rate
+  const combinedBlockingRate = avgBlockingRate * 0.6 + confirmedAnomalyRate * 0.4;
+  const ooniScoreIdx = (1 - combinedBlockingRate) * 100;
+
+  // Cuba vs World: compare speed and latency from mlab (global averages)
+  const cubaDownload = speed.length > 0 ? avg(speed.map(s => s.download_speed_mbps).filter(Boolean)) : null;
+  const globalDownload = speed.filter(s => s.global_download_mbps).length > 0
+    ? avg(speed.filter(s => s.global_download_mbps).map(s => s.global_download_mbps))
+    : null;
+  const cubaLatency = speed.length > 0 ? avg(speed.map(s => s.latency_ms).filter(Boolean)) : null;
+  const globalLatency = speed.filter(s => s.global_latency_ms).length > 0
+    ? avg(speed.filter(s => s.global_latency_ms).map(s => s.global_latency_ms))
+    : null;
+
+  let cfComparisonScore = 50; // default when no data
+  if (cubaDownload != null && globalDownload != null && globalDownload > 0) {
+    // Speed ratio: Cuba/Global (e.g. 5.6/121.5 = 0.046 → score 4.6)
+    const speedRatio = Math.min(1, cubaDownload / globalDownload);
+    const speedScore = speedRatio * 100;
+    // Latency ratio: Global/Cuba (lower is better, e.g. 83/157 = 0.53 → score 53)
+    let latencyScore = 50;
+    if (cubaLatency != null && globalLatency != null && cubaLatency > 0) {
+      latencyScore = Math.max(0, Math.min(100, (globalLatency / cubaLatency) * 100));
+    }
+    // 70% speed, 30% latency
+    cfComparisonScore = speedScore * 0.7 + latencyScore * 0.3;
+  }
 
   let crowdScoreIdx = 50;
   if (crowdTests.length > 0 && crowdAvg?.download != null) {
@@ -269,15 +306,18 @@ async function gatherData(db, type) {
   const hasCfOutage = outages.some(o => o.alert_type === 'outage' && !o.end_date);
   const cfOutageScore = hasCfOutage ? 0 : 100;
 
-  const wIoda = hasCfOutage ? 0.15 : hasCrowd ? 0.25 : 0.30;
-  const wBgp = hasCfOutage ? 0.10 : hasCrowd ? 0.20 : 0.25;
-  const wTraffic = hasCfOutage ? 0.20 : hasCrowd ? 0.20 : 0.25;
-  const wOoni = hasCfOutage ? 0.10 : hasCrowd ? 0.15 : 0.20;
-  const wCrowd = hasCrowd ? (hasCfOutage ? 0.10 : 0.20) : 0;
-  const wCfOutage = hasCfOutage ? 0.35 : 0;
+  // Weights: Cuba vs World and Cloudflare traffic dominate
+  const wIoda = hasCfOutage ? 0.05 : hasCrowd ? 0.10 : 0.15;
+  const wBgp = hasCfOutage ? 0.05 : hasCrowd ? 0.10 : 0.15;
+  const wTraffic = hasCfOutage ? 0.10 : hasCrowd ? 0.20 : 0.30;
+  const wOoni = hasCfOutage ? 0.05 : hasCrowd ? 0.05 : 0.10;
+  const wCfComparison = hasCfOutage ? 0.15 : hasCrowd ? 0.25 : 0.30;
+  const wCrowd = hasCrowd ? (hasCfOutage ? 0.10 : 0.30) : 0;
+  const wCfOutage = hasCfOutage ? 0.50 : 0;
 
   let composite = iodaScore * wIoda + bgpScore * wBgp + trafficScoreIdx * wTraffic
-    + ooniScoreIdx * wOoni + crowdScoreIdx * wCrowd + cfOutageScore * wCfOutage;
+    + ooniScoreIdx * wOoni + cfComparisonScore * wCfComparison
+    + crowdScoreIdx * wCrowd + cfOutageScore * wCfOutage;
 
   const dl = speed[0]?.download_speed_mbps;
   const lat = speed[0]?.latency_ms;

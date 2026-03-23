@@ -13,13 +13,15 @@ export async function collectCloudflare() {
   console.log('[Cloudflare] Collecting traffic data for Cuba');
   const headers = { Authorization: `Bearer ${token}` };
 
-  const [timeseries, deviceSummary, botSummary] = await Promise.all([
+  const [timeseries, deviceSummary, botSummary, worldTimeseries] = await Promise.all([
     fetchJson(`${BASE}/http/timeseries?dateRange=1d&location=CU&format=json`, { headers })
       .catch(err => { console.error('[Cloudflare] timeseries error:', err.message); return null; }),
     fetchJson(`${BASE}/http/summary/device_type?dateRange=1d&location=CU&format=json`, { headers })
       .catch(err => { console.error('[Cloudflare] device_type error:', err.message); return null; }),
     fetchJson(`${BASE}/http/summary/bot_class?dateRange=1d&location=CU&format=json`, { headers })
       .catch(err => { console.error('[Cloudflare] bot_class error:', err.message); return null; }),
+    fetchJson(`${BASE}/http/timeseries?dateRange=1d&format=json`, { headers })
+      .catch(err => { console.error('[Cloudflare] world timeseries error:', err.message); return null; }),
   ]);
 
   const allMetrics = [];
@@ -55,6 +57,18 @@ export async function collectCloudflare() {
     }
   } else {
     console.warn('[Cloudflare] No timeseries data');
+  }
+
+  // Worldwide traffic timeseries (for Cuba vs World comparison)
+  if (worldTimeseries?.result?.serie_0) {
+    const { timestamps, values } = worldTimeseries.result.serie_0;
+    const metrics = (timestamps || []).map((ts, i) => ({
+      timestamp: new Date(ts),
+      metadata: { source: 'cloudflare-world', province_id: null, country: null },
+      traffic_score: values[i] != null ? parseFloat(values[i]) * 100 : null,
+    }));
+    allMetrics.push(...metrics);
+    console.log(`[Cloudflare] World traffic: ${metrics.length} data points`);
   }
 
   // Device type and bot class summaries — store as a single snapshot metric

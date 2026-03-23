@@ -88,16 +88,51 @@ function computeBlockingIndex(
     ? recentTraffic.reduce((sum, d) => sum + (d.traffic_score as number || 0), 0) / recentTraffic.length
     : 50;
 
-  const latestBlocking = blocking[blocking.length - 1];
-  const blockingRate = latestBlocking ? (latestBlocking.blocking_rate as number ?? 0) : 0;
-  const ooniScore = (1 - blockingRate) * 100;
+  // OONI: 7-day average blocking rate (blocked + anomalies) instead of single day
+  const ooniWithData = blocking.filter(d => (d.tests_count as number) > 0);
+  const avgBlockingRate = ooniWithData.length > 0
+    ? ooniWithData.reduce((sum, d) => sum + ((d.blocking_rate as number) || 0), 0) / ooniWithData.length
+    : 0;
+  const totalOoniTests = ooniWithData.reduce((sum, d) => sum + ((d.tests_count as number) || 0), 0);
+  const totalConfirmed = ooniWithData.reduce((sum, d) => sum + ((d.confirmed_count as number) || 0), 0);
+  const totalAnomalies = ooniWithData.reduce((sum, d) => sum + ((d.anomaly_count as number) || 0), 0);
+  const confirmedAnomalyRate = totalOoniTests > 0
+    ? (totalConfirmed + totalAnomalies) / totalOoniTests
+    : 0;
+  const combinedBlockingRate = avgBlockingRate * 0.6 + confirmedAnomalyRate * 0.4;
+  const ooniScore = (1 - combinedBlockingRate) * 100;
+
+  // Cuba vs World: compare speed and latency from mlab (global averages)
+  const cubaDownload = mlab.length > 0
+    ? mlab.map(s => s.download_speed_mbps as number).filter(Boolean).reduce((a, b, _, arr) => a + b / arr.length, 0)
+    : null;
+  const globalDownloads = mlab.filter(s => s.global_download_mbps);
+  const globalDownload = globalDownloads.length > 0
+    ? globalDownloads.map(s => s.global_download_mbps as number).reduce((a, b, _, arr) => a + b / arr.length, 0)
+    : null;
+  const cubaLatency = mlab.length > 0
+    ? mlab.map(s => s.latency_ms as number).filter(Boolean).reduce((a, b, _, arr) => a + b / arr.length, 0)
+    : null;
+  const globalLatencies = mlab.filter(s => s.global_latency_ms);
+  const globalLatency = globalLatencies.length > 0
+    ? globalLatencies.map(s => s.global_latency_ms as number).reduce((a, b, _, arr) => a + b / arr.length, 0)
+    : null;
+
+  let cfComparisonScore = 50;
+  if (cubaDownload != null && globalDownload != null && globalDownload > 0) {
+    const speedRatio = Math.min(1, cubaDownload / globalDownload);
+    const speedScore = speedRatio * 100;
+    let latencyScore = 50;
+    if (cubaLatency != null && globalLatency != null && cubaLatency > 0) {
+      latencyScore = Math.max(0, Math.min(100, (globalLatency / cubaLatency) * 100));
+    }
+    cfComparisonScore = speedScore * 0.7 + latencyScore * 0.3;
+  }
 
   // Crowdsourced speed quality score (0-100)
   let crowdScore = 50; // default when no data
   if (crowd && crowd.test_count > 0 && crowd.avg_download != null) {
-    // Score based on download speed: 5+ Mbps = 100, 0 Mbps = 0
     const speedScore = Math.min(100, (crowd.avg_download / 5) * 100);
-    // Latency penalty: >500ms is bad
     const latPenalty = crowd.avg_latency != null ? Math.min(20, Math.max(0, (crowd.avg_latency - 200) / 15)) : 0;
     crowdScore = Math.max(0, speedScore - latPenalty);
   }
@@ -107,16 +142,18 @@ function computeBlockingIndex(
   const hasCfOutage = (outages?.active_cf_alerts ?? 0) > 0;
   const cfOutageScore = hasCfOutage ? 0 : 100;
 
-  // Weights: Cloudflare outage gets highest weight when active
-  const wIoda = hasCfOutage ? 0.15 : hasCrowd ? 0.25 : 0.30;
-  const wBgp = hasCfOutage ? 0.10 : hasCrowd ? 0.20 : 0.25;
-  const wTraffic = hasCfOutage ? 0.20 : hasCrowd ? 0.20 : 0.25;
-  const wOoni = hasCfOutage ? 0.10 : hasCrowd ? 0.15 : 0.20;
-  const wCrowd = hasCrowd ? (hasCfOutage ? 0.10 : 0.20) : 0;
-  const wCfOutage = hasCfOutage ? 0.35 : 0;
+  // Weights: Cuba vs World and Cloudflare traffic dominate
+  const wIoda = hasCfOutage ? 0.05 : hasCrowd ? 0.10 : 0.15;
+  const wBgp = hasCfOutage ? 0.05 : hasCrowd ? 0.10 : 0.15;
+  const wTraffic = hasCfOutage ? 0.10 : hasCrowd ? 0.20 : 0.30;
+  const wOoni = hasCfOutage ? 0.05 : hasCrowd ? 0.05 : 0.10;
+  const wCfComparison = hasCfOutage ? 0.15 : hasCrowd ? 0.25 : 0.30;
+  const wCrowd = hasCrowd ? (hasCfOutage ? 0.10 : 0.30) : 0;
+  const wCfOutage = hasCfOutage ? 0.50 : 0;
 
   let composite = iodaScore * wIoda + bgpScore * wBgp + trafficScore * wTraffic
-    + ooniScore * wOoni + crowdScore * wCrowd + cfOutageScore * wCfOutage;
+    + ooniScore * wOoni + cfComparisonScore * wCfComparison
+    + crowdScore * wCrowd + cfOutageScore * wCfOutage;
 
   const dl = mlab[0]?.download_speed_mbps as number | undefined;
   const lat = mlab[0]?.latency_ms as number | undefined;
@@ -130,10 +167,11 @@ function computeBlockingIndex(
     breakdown.push({ label: 'Cloudflare (interrupción)', score: Math.round(cfOutageScore), weight: Math.round(wCfOutage * 100) });
   }
   breakdown.push(
-    { label: 'Trafico (Cloudflare)', score: Math.round(trafficScore), weight: Math.round(wTraffic * 100) },
+    { label: 'Censura (OONI 7d)', score: Math.round(ooniScore), weight: Math.round(wOoni * 100) },
+    { label: 'Tráfico vs Mundo', score: Math.round(cfComparisonScore), weight: Math.round(wCfComparison * 100) },
+    { label: 'Tráfico (Cloudflare)', score: Math.round(trafficScore), weight: Math.round(wTraffic * 100) },
     { label: 'IODA (interrupciones)', score: Math.round(iodaScore), weight: Math.round(wIoda * 100) },
     { label: 'BGP (visibilidad)', score: Math.round(bgpScore), weight: Math.round(wBgp * 100) },
-    { label: 'Censura (OONI)', score: Math.round(ooniScore), weight: Math.round(wOoni * 100) },
   );
   if (hasCrowd) {
     breakdown.push({ label: 'Velocidad (usuarios)', score: Math.round(crowdScore), weight: Math.round(wCrowd * 100) });
@@ -159,7 +197,7 @@ export default function Dashboard() {
       try {
         const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes, notesRes] = await Promise.all([
           fetch('/api/outages?hours=48').then(r => r.json()),
-          fetch('/api/blocking?days=15').then(r => r.json()),
+          fetch('/api/blocking?days=7').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare&hours=24').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare-summary&hours=24&limit=1').then(r => r.json()),
           fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
@@ -572,10 +610,14 @@ function BlockingIndexGauge({ score, breakdown }: { score: number; breakdown: Su
   const radius = 70;
   const circumference = Math.PI * radius;
   const fillLength = (score / 100) * circumference;
+  const shareText = `Internet en Cuba: ${score}/100 (${statusLabel === 'OPERATIVO' ? 'Operativo' : statusLabel === 'DEGRADADO' ? 'Degradado' : 'Bloqueado'})`;
 
   return (
     <div style={{ background: '#1e293b', borderRadius: 12, padding: '20px 24px', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 8 }}>INDICE DE APERTURA DE INTERNET</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ color: '#94a3b8', fontSize: 12 }}>INDICE DE APERTURA DE INTERNET</div>
+        <a href="/indice" style={{ color: '#3b82f6', fontSize: 11, textDecoration: 'none' }}>Ver mas &rarr;</a>
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
         <svg width="180" height="105" viewBox="0 0 180 105">
           <path d="M 20 90 A 70 70 0 0 1 160 90" fill="none" stroke="#334155" strokeWidth="12" strokeLinecap="round" />
@@ -601,6 +643,9 @@ function BlockingIndexGauge({ score, breakdown }: { score: number; breakdown: Su
             </div>
           );
         })}
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <ShareButtons text={shareText} url="https://internet.cubapk.com/indice" compact />
       </div>
     </div>
   );
