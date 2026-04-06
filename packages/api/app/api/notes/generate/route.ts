@@ -294,7 +294,7 @@ REGLAS DE CONTENIDO:
 - Usa comparaciones con el promedio mundial para que la gente entienda ("mientras en el mundo la descarga promedio es de X Mbps, en Cuba apenas llega a Y")
 - Sé directo y conciso (3-4 párrafos máximo)
 - SIEMPRE abre con nuestro *Índice de Apertura de Internet* (de 0 a 100) y explica qué significa en lenguaje sencillo: 70+ = "internet funciona razonablemente", 40-69 = "internet está degradado, vas a tener problemas", menos de 40 = "internet está prácticamente caído"
-- Si hubo apagones eléctricos o cortes, conéctalo con el impacto en la vida diaria (transferencias por Transfermóvil, WhatsApp, trabajo remoto, clases online, etc.)
+- Si hubo apagones eléctricos o cortes, conéctalo con el impacto en la vida diaria (WhatsApp, trabajo remoto, clases online, etc.). NO menciones Transfermóvil porque opera por USSD y no depende de internet.
 - Título corto y llamativo para redes sociales
 - FORMATO: texto plano para Slack. Para negrita usa UN solo asterisco: *texto* (NO uses **texto** que es Markdown y no funciona en Slack). Para cursiva usa _texto_. NUNCA uses doble asterisco **.
 - Firma al final: "— Cuba Internet Monitor (internet.cubapk.com) | *elTOQUE*"
