@@ -321,6 +321,7 @@ export default function Dashboard() {
         @media (max-width: 768px) {
           .grid-3, .grid-1-2, .grid-rest { grid-template-columns: 1fr; }
           .dash-header { flex-direction: column; align-items: flex-start !important; gap: 8px; }
+          .speedtest-cta-card { order: -1; }
         }
       `}</style>
 
@@ -382,37 +383,18 @@ export default function Dashboard() {
         <p style={{ textAlign: 'center', padding: 40 }}>Cargando datos...</p>
       ) : (
         <>
-          {/* Fila 1: Grafica de trafico principal */}
-          <Suspense fallback={<p>Cargando graficos...</p>}>
-            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
-          </Suspense>
-
-          {/* Fila 2: Datos de Cloudflare/infraestructura */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
-            <ComparisonCard
-              label="Descarga (Cloudflare)"
-              cubaValue={mlab[0]?.download_speed_mbps as number | undefined}
-              globalValue={mlab[0]?.global_download_mbps as number | undefined}
-              unit="Mbps"
-              hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com). Cuba vs promedio global."
-              lowerIsBetter={false}
-            />
-            <ComparisonCard
-              label="Latencia (Cloudflare)"
-              cubaValue={mlab[0]?.latency_ms as number | undefined}
-              globalValue={mlab[0]?.global_latency_ms as number | undefined}
-              unit="ms"
-              decimals={0}
-              hint="Latencia promedio medida por Cloudflare Radar. Cuba vs promedio global. Menor es mejor."
-              lowerIsBetter={true}
-            />
+          {/* Mapa de velocidad por provincia */}
+          <div style={{ marginBottom: 16 }}>
+            <Suspense fallback={<p>Cargando mapa...</p>}>
+              <CubaSpeedMap data={crowdByProvince} />
+            </Suspense>
           </div>
 
-          {/* Fila 3: Crowdsourced speed test stats */}
+          {/* Crowdsourced speed test stats */}
           <div className="grid-3">
             <StatCard label="Descarga (usuarios)" value={fmtSpeed(crowdStats?.avg_download)} sub="Promedio crowdsourced" hint="Velocidad promedio de descarga reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
             <StatCard label="Subida (usuarios)" value={fmtSpeed(crowdStats?.avg_upload)} sub="Promedio crowdsourced" hint="Velocidad promedio de subida reportada por usuarios que hicieron el test desde Cuba en los ultimos 7 dias." />
-            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div className="speedtest-cta-card" style={{ background: '#1e293b', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 4 }}>Tests esta semana</div>
                 <div style={{ fontSize: 28, fontWeight: 700 }}>{crowdStats?.test_count ?? 0}</div>
@@ -434,12 +416,31 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Mapa de velocidad por provincia */}
-          <div style={{ marginBottom: 16 }}>
-            <Suspense fallback={<p>Cargando mapa...</p>}>
-              <CubaSpeedMap data={crowdByProvince} />
-            </Suspense>
+          {/* Estadisticas de Cuba (Cloudflare) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
+            <ComparisonCard
+              label="Descarga (Cloudflare)"
+              cubaValue={mlab[0]?.download_speed_mbps as number | undefined}
+              globalValue={mlab[0]?.global_download_mbps as number | undefined}
+              unit="Mbps"
+              hint="Velocidad promedio de descarga medida por Cloudflare Radar (speed.cloudflare.com). Cuba vs promedio global."
+              lowerIsBetter={false}
+            />
+            <ComparisonCard
+              label="Latencia (Cloudflare)"
+              cubaValue={mlab[0]?.latency_ms as number | undefined}
+              globalValue={mlab[0]?.global_latency_ms as number | undefined}
+              unit="ms"
+              decimals={0}
+              hint="Latencia promedio medida por Cloudflare Radar. Cuba vs promedio global. Menor es mejor."
+              lowerIsBetter={true}
+            />
           </div>
+
+          {/* Grafica de trafico principal */}
+          <Suspense fallback={<p>Cargando graficos...</p>}>
+            <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="traffic" />
+          </Suspense>
 
           {/* Fila 4: Indice de Apertura + OONI */}
           <div className="grid-1-2">
