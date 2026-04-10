@@ -424,6 +424,37 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Speedtest Global Index (Ookla) — solo banda ancha fija */}
+          {ooklaIndex?.fixed_median && (
+            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ color: '#94a3b8', fontSize: 12 }}>SPEEDTEST GLOBAL INDEX (Ookla)</div>
+                <a href="https://www.speedtest.net/global-index/cuba" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: 11, textDecoration: 'none' }}>
+                  speedtest.net &rarr;
+                </a>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Descarga</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#3b82f6' }}>{ooklaIndex.fixed_median.download_mbps.toFixed(1)}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Subida</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#8b5cf6' }}>{ooklaIndex.fixed_median.upload_mbps.toFixed(2)}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Latencia</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0' }}>{ooklaIndex.fixed_median.latency_ms}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> ms</span></div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Ranking</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>#{ooklaIndex.fixed_median.rank}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> de {ooklaIndex.fixed_median.total_countries || '~200'}</span></div>
+                </div>
+              </div>
+              <div style={{ color: '#475569', fontSize: 11, marginTop: 10 }}>Banda ancha fija, mediana mensual ({ooklaIndex.fixed_median.month}). Fuente: Speedtest Global Index.</div>
+            </div>
+          )}
+
           {/* Estadisticas de Cuba (Cloudflare) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16, marginBottom: 16 }}>
             <ComparisonCard
@@ -464,37 +495,6 @@ export default function Dashboard() {
             <MiniBarCard label="Humano vs Bot" a={cfSummary?.human_pct} b={cfSummary?.bot_pct} aLabel="Humano" bLabel="Bot" aColor="#22c55e" bColor="#ef4444" hint="Porcentaje de trafico generado por personas reales vs bots automatizados, segun Cloudflare Radar." />
             <StatCard label="Visibilidad BGP" value={outages?.latest_ripe?.bgp_visibility_pct != null ? `${(outages.latest_ripe.bgp_visibility_pct * 100).toFixed(1)}%` : 'N/A'} sub="AS27725 (ETECSA)" hint="Que tan visible es la red de ETECSA para el resto de internet. Menos de 70% indica problemas serios de conectividad." />
           </div>
-
-          {/* Speedtest Global Index (Ookla) — solo banda ancha fija, Cuba no tiene datos moviles */}
-          {ooklaIndex?.fixed_median && (
-            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ color: '#94a3b8', fontSize: 12 }}>SPEEDTEST GLOBAL INDEX (Ookla)</div>
-                <a href="https://www.speedtest.net/global-index/cuba" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: 11, textDecoration: 'none' }}>
-                  speedtest.net &rarr;
-                </a>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Descarga</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#3b82f6' }}>{ooklaIndex.fixed_median.download_mbps.toFixed(1)}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Subida</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#8b5cf6' }}>{ooklaIndex.fixed_median.upload_mbps.toFixed(2)}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Latencia</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0' }}>{ooklaIndex.fixed_median.latency_ms}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> ms</span></div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Ranking</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>#{ooklaIndex.fixed_median.rank}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> de {ooklaIndex.fixed_median.total_countries || '~200'}</span></div>
-                </div>
-              </div>
-              <div style={{ color: '#475569', fontSize: 11, marginTop: 10 }}>Banda ancha fija, mediana mensual ({ooklaIndex.fixed_median.month}). Fuente: Speedtest Global Index.</div>
-            </div>
-          )}
 
           {/* Resto de graficas */}
           <Suspense fallback={<p>Cargando graficos...</p>}>
