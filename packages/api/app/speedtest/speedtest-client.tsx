@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import ShareButtons from '../components/share-buttons';
+import SpeedAnalysis from './speed-analysis';
 
 const PROVINCES = [
   { id: 'PRI', name: 'Pinar del Rio' }, { id: 'ART', name: 'Artemisa' },
@@ -372,6 +373,11 @@ export default function SpeedTestClient() {
                 url={`https://internet.cubapk.com/speedtest?dl=${formatSpeed(result.download_mbps).value}&ul=${formatSpeed(result.upload_mbps).value}&lat=${result.latency_ms}`}
               />
             </div>
+            <SpeedAnalysis
+              downloadMbps={result.download_mbps}
+              uploadMbps={result.upload_mbps}
+              latencyMs={result.latency_ms}
+            />
             {avg24h && (
               <div style={{ marginTop: 16, padding: '12px 16px', background: '#0f172a', borderRadius: 10 }}>
                 <div style={{ color: '#64748b', fontSize: 11, marginBottom: 8 }}>

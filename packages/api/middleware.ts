@@ -45,8 +45,12 @@ function isCubanRequest(request: NextRequest): boolean {
 }
 
 export function middleware(request: NextRequest) {
-  // Bypass in development
+  // Bypass in development or local testing
   if (process.env.NODE_ENV === 'development') {
+    return NextResponse.next();
+  }
+  const host = request.headers.get('host') || '';
+  if (host.startsWith('localhost') || host.startsWith('127.0.0.1')) {
     return NextResponse.next();
   }
 
