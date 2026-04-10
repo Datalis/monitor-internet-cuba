@@ -6,6 +6,7 @@ import { collectOoni } from './collectors/ooni.js';
 import { collectCloudflare } from './collectors/cloudflare.js';
 import { collectOokla } from './collectors/ookla.js';
 import { collectMlab } from './collectors/mlab.js';
+import { collectSpeedtestIndex } from './collectors/speedtest-index.js';
 import { generateWeeklyNote, checkAndReportOutage } from './collectors/ai-notes.js';
 
 async function main() {
@@ -19,6 +20,7 @@ async function main() {
   await runSafe('OONI', collectOoni);
   await runSafe('Cloudflare', collectCloudflare);
   await runSafe('M-Lab', collectMlab);
+  await runSafe('Speedtest Index', collectSpeedtestIndex);
 
   // RIPE Stat: every 5 minutes (most critical for outage detection)
   cron.schedule('*/5 * * * *', () => runSafe('RIPE Stat', collectRipeStat));
@@ -34,6 +36,9 @@ async function main() {
 
   // Ookla: daily at 3am (checks for new quarterly data)
   cron.schedule('0 3 * * *', () => runSafe('Ookla', collectOokla));
+
+  // Speedtest Global Index: daily at 4am (monthly data, rarely changes)
+  cron.schedule('0 4 * * *', () => runSafe('Speedtest Index', collectSpeedtestIndex));
 
   // Speed/Latency (Cloudflare Radar): every 6 hours
   cron.schedule('0 */6 * * *', () => runSafe('Speed', collectMlab));
