@@ -1,13 +1,16 @@
 import { request } from 'undici';
 import { insertMetrics } from '../db.js';
+import { getDb } from '../db.js';
 
 // Scrapes Speedtest Global Index page for Cuba to get Ookla's
-// aggregated speed data (mobile + fixed broadband, monthly medians)
+// aggregated speed data (fixed broadband + mobile, monthly)
+// Cuba currently has no mobile data on the index.
 
-const URL = 'https://www.speedtest.net/global-index/cuba';
+const PAGE_URL = 'https://www.speedtest.net/global-index/cuba';
+const INDEX_URL = 'https://www.speedtest.net/global-index';
 
-async function fetchPage() {
-  const res = await request(URL, {
+async function fetchHtml(url) {
+  const res = await request(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml',
@@ -16,112 +19,139 @@ async function fetchPage() {
   });
 
   if (res.statusCode >= 400) {
-    throw new Error(`HTTP ${res.statusCode} from speedtest.net`);
+    throw new Error(`HTTP ${res.statusCode} from ${url}`);
   }
 
   return await res.body.text();
 }
 
-function extractJsonObjects(html) {
-  // Extract all JSON objects that contain download_mbps (speed data entries)
-  const regex = /\{[^{}]*"download_mbps":"[\d.]+"[^{}]*\}/g;
-  const matches = html.match(regex) || [];
-  return matches.map(m => {
-    try { return JSON.parse(m); } catch { return null; }
-  }).filter(Boolean);
+// Extract named arrays like "fixedMean":[...], "mobileMedian":[...] from HTML
+function extractNamedArrays(html) {
+  const result = {};
+  const names = ['fixedMean', 'fixedMedian', 'mobileMean', 'mobileMedian'];
+
+  for (const name of names) {
+    const pattern = `"${name}":[`;
+    const start = html.indexOf(pattern);
+    if (start === -1) {
+      result[name] = [];
+      continue;
+    }
+
+    // Find the matching closing bracket
+    const arrStart = start + pattern.length - 1;
+    let depth = 0;
+    let end = arrStart;
+    for (let i = arrStart; i < html.length; i++) {
+      if (html[i] === '[') depth++;
+      else if (html[i] === ']') {
+        depth--;
+        if (depth === 0) { end = i + 1; break; }
+      }
+    }
+
+    try {
+      result[name] = JSON.parse(html.slice(arrStart, end));
+    } catch {
+      result[name] = [];
+    }
+  }
+
+  return result;
 }
 
-function classifyEntries(entries) {
-  // The page embeds two series: fixedMean (mobile*) and fixedMedian (fixed broadband)
-  // Mobile speeds are significantly higher (>10 Mbps) than fixed (~3-4 Mbps)
-  // Entries with rank_change are summary entries, not historical
-  const historical = entries.filter(e => e.global_index_date && !('rank_change' in e));
+// Count total countries from the global index page
+async function fetchTotalCountries() {
+  try {
+    const html = await fetchHtml(INDEX_URL);
+    const ranks = html.match(/"rank":(\d+)/g) || [];
+    let max = 0;
+    for (const m of ranks) {
+      const n = parseInt(m.split(':')[1]);
+      if (n > max) max = n;
+    }
+    return max || null;
+  } catch {
+    return null;
+  }
+}
 
-  // Split by speed range: mobile has download > 8 Mbps, fixed < 8 Mbps
-  // More reliable: they appear in order in the HTML — first batch is mobile, second is fixed
-  const half = Math.floor(historical.length / 2);
-  const mobile = historical.slice(0, half);
-  const fixed = historical.slice(half);
-
-  // Also extract the summary entries (current rank + rank_change)
-  const summaries = entries.filter(e => 'rank_change' in e);
-
-  return { mobile, fixed, summaries };
+function buildMetrics(entries, type) {
+  return entries
+    .filter(e => e.global_index_date && e.download_mbps)
+    .map(entry => {
+      const date = new Date(entry.global_index_date);
+      date.setUTCHours(12, 0, 0, 0);
+      return {
+        timestamp: date,
+        metadata: {
+          source: 'speedtest-index',
+          type,
+          country: 'CU',
+          country_id: entry.country_id,
+        },
+        download_speed_mbps: parseFloat(entry.download_mbps),
+        upload_speed_mbps: parseFloat(entry.upload_mbps),
+        latency_ms: entry.latency_ms,
+        jitter_ms: entry.jitter || null,
+        global_rank: entry.rank,
+        month: entry.month,
+      };
+    });
 }
 
 export async function collectSpeedtestIndex() {
   console.log('[Speedtest Index] Fetching Cuba data from speedtest.net/global-index');
 
   try {
-    const html = await fetchPage();
-    const entries = extractJsonObjects(html);
+    const html = await fetchHtml(PAGE_URL);
+    const arrays = extractNamedArrays(html);
 
-    if (entries.length === 0) {
-      console.warn('[Speedtest Index] No data found in page');
+    const fixedMedian = arrays.fixedMedian || [];
+    const fixedMean = arrays.fixedMean || [];
+    const mobileMedian = arrays.mobileMedian || [];
+    const mobileMean = arrays.mobileMean || [];
+
+    console.log(`[Speedtest Index] fixedMedian=${fixedMedian.length}, fixedMean=${fixedMean.length}, mobileMedian=${mobileMedian.length}, mobileMean=${mobileMean.length}`);
+
+    if (fixedMedian.length === 0 && mobileMedian.length === 0) {
+      console.warn('[Speedtest Index] No data found');
       return [];
     }
 
-    const { mobile, fixed, summaries } = classifyEntries(entries);
-    console.log(`[Speedtest Index] Found ${mobile.length} mobile + ${fixed.length} fixed entries, ${summaries.length} summaries`);
+    // Delete old incorrectly classified data
+    const db = await getDb();
+    await db.collection('metrics').deleteMany({ 'metadata.source': 'speedtest-index' });
 
-    const metrics = [];
+    const metrics = [
+      ...buildMetrics(fixedMedian, 'fixed_median'),
+      ...buildMetrics(fixedMean, 'fixed_mean'),
+      ...buildMetrics(mobileMedian, 'mobile_median'),
+      ...buildMetrics(mobileMean, 'mobile_mean'),
+    ];
 
-    // Process mobile entries
-    for (const entry of mobile) {
-      const date = new Date(entry.global_index_date);
-      date.setUTCHours(12, 0, 0, 0);
-
-      metrics.push({
-        timestamp: date,
-        metadata: {
-          source: 'speedtest-index',
-          type: 'mobile',
-          country: 'CU',
-          country_id: entry.country_id,
-        },
-        download_speed_mbps: parseFloat(entry.download_mbps),
-        upload_speed_mbps: parseFloat(entry.upload_mbps),
-        latency_ms: entry.latency_ms,
-        jitter_ms: entry.jitter || null,
-        global_rank: entry.rank,
-        month: entry.month,
-      });
-    }
-
-    // Process fixed broadband entries
-    for (const entry of fixed) {
-      const date = new Date(entry.global_index_date);
-      date.setUTCHours(12, 0, 0, 0);
-
-      metrics.push({
-        timestamp: date,
-        metadata: {
-          source: 'speedtest-index',
-          type: 'fixed',
-          country: 'CU',
-          country_id: entry.country_id,
-        },
-        download_speed_mbps: parseFloat(entry.download_mbps),
-        upload_speed_mbps: parseFloat(entry.upload_mbps),
-        latency_ms: entry.latency_ms,
-        jitter_ms: entry.jitter || null,
-        global_rank: entry.rank,
-        month: entry.month,
-      });
+    // Fetch and store total countries count
+    const totalCountries = await fetchTotalCountries();
+    if (totalCountries) {
+      for (const m of metrics) {
+        m.total_countries = totalCountries;
+      }
     }
 
     if (metrics.length) {
       await insertMetrics(metrics);
     }
 
-    // Log latest values
-    const latestMobile = mobile[mobile.length - 1];
-    const latestFixed = fixed[fixed.length - 1];
-    if (latestMobile) {
-      console.log(`[Speedtest Index] Mobile: ${latestMobile.download_mbps} Mbps down, ${latestMobile.upload_mbps} up, ${latestMobile.latency_ms} ms, rank #${latestMobile.rank} (${latestMobile.month})`);
-    }
+    // Log latest
+    const latestFixed = fixedMedian[fixedMedian.length - 1];
+    const latestMobile = mobileMedian[mobileMedian.length - 1];
     if (latestFixed) {
-      console.log(`[Speedtest Index] Fixed:  ${latestFixed.download_mbps} Mbps down, ${latestFixed.upload_mbps} up, ${latestFixed.latency_ms} ms, rank #${latestFixed.rank} (${latestFixed.month})`);
+      console.log(`[Speedtest Index] Fixed median: ${latestFixed.download_mbps} Mbps down, ${latestFixed.upload_mbps} up, ${latestFixed.latency_ms} ms, rank #${latestFixed.rank}${totalCountries ? '/' + totalCountries : ''} (${latestFixed.month})`);
+    }
+    if (latestMobile) {
+      console.log(`[Speedtest Index] Mobile median: ${latestMobile.download_mbps} Mbps down, ${latestMobile.upload_mbps} up, ${latestMobile.latency_ms} ms, rank #${latestMobile.rank}${totalCountries ? '/' + totalCountries : ''} (${latestMobile.month})`);
+    } else {
+      console.log('[Speedtest Index] No mobile data available for Cuba');
     }
 
     return metrics;

@@ -10,39 +10,41 @@ export async function GET() {
     .collection('metrics')
     .find({ 'metadata.source': 'speedtest-index' })
     .sort({ timestamp: -1 })
-    .limit(100)
+    .limit(200)
     .toArray();
 
-  // Split into mobile and fixed, sorted chronologically
-  const mobile = data
-    .filter(d => d.metadata?.type === 'mobile')
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  // Split by type, sorted chronologically
+  const sort = (arr: typeof data) =>
+    arr.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-  const fixed = data
-    .filter(d => d.metadata?.type === 'fixed')
-    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  const fixedMedian = sort(data.filter(d => d.metadata?.type === 'fixed_median'));
+  const fixedMean = sort(data.filter(d => d.metadata?.type === 'fixed_mean'));
+  const mobileMedian = sort(data.filter(d => d.metadata?.type === 'mobile_median'));
+  const mobileMean = sort(data.filter(d => d.metadata?.type === 'mobile_mean'));
 
-  const latestMobile = mobile[mobile.length - 1] || null;
-  const latestFixed = fixed[fixed.length - 1] || null;
+  function formatLatest(arr: typeof data) {
+    const entry = arr[arr.length - 1];
+    if (!entry) return null;
+    return {
+      download_mbps: entry.download_speed_mbps,
+      upload_mbps: entry.upload_speed_mbps,
+      latency_ms: entry.latency_ms,
+      rank: entry.global_rank,
+      total_countries: entry.total_countries || null,
+      month: entry.month,
+    };
+  }
 
   return NextResponse.json({
-    mobile,
-    fixed,
+    fixed_median: fixedMedian,
+    fixed_mean: fixedMean,
+    mobile_median: mobileMedian,
+    mobile_mean: mobileMean,
     latest: {
-      mobile: latestMobile ? {
-        download_mbps: latestMobile.download_speed_mbps,
-        upload_mbps: latestMobile.upload_speed_mbps,
-        latency_ms: latestMobile.latency_ms,
-        rank: latestMobile.global_rank,
-        month: latestMobile.month,
-      } : null,
-      fixed: latestFixed ? {
-        download_mbps: latestFixed.download_speed_mbps,
-        upload_mbps: latestFixed.upload_speed_mbps,
-        latency_ms: latestFixed.latency_ms,
-        rank: latestFixed.global_rank,
-        month: latestFixed.month,
-      } : null,
+      fixed_median: formatLatest(fixedMedian),
+      fixed_mean: formatLatest(fixedMean),
+      mobile_median: formatLatest(mobileMedian),
+      mobile_mean: formatLatest(mobileMean),
     },
   });
 }
