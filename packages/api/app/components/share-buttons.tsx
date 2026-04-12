@@ -101,48 +101,51 @@ export default function ShareButtons({ text, url, compact }: ShareButtonsProps) 
   };
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 6 : 8, alignItems: 'center' }}>
-      {!compact && <span style={{ color: '#64748b', fontSize: 12 }}>Compartir:</span>}
-      <a
-        href={twitterUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ ...btnBase, background: '#000000' }}
-        onMouseOver={e => handleHover(e, true)}
-        onMouseOut={e => handleHover(e, false)}
-      >
-        <XIcon />{!compact && 'X'}
-      </a>
-      <a
-        href={facebookUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ ...btnBase, background: '#1877F2' }}
-        onMouseOver={e => handleHover(e, true)}
-        onMouseOut={e => handleHover(e, false)}
-      >
-        <FacebookIcon />{!compact && 'Facebook'}
-      </a>
-      <a
-        href={whatsappUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ ...btnBase, background: '#25D366' }}
-        onMouseOver={e => handleHover(e, true)}
-        onMouseOut={e => handleHover(e, false)}
-      >
-        <WhatsAppIcon />{!compact && 'WhatsApp'}
-      </a>
-      <button
-        onClick={handleCopy}
-        style={{ ...btnBase, background: copied ? '#22c55e' : '#64748b' }}
-        onMouseOver={e => handleHover(e, true)}
-        onMouseOut={e => handleHover(e, false)}
-        title="Compartir via otras apps"
-      >
-        {copied ? <CheckIcon /> : <ShareIcon />}
-        {!compact && (copied ? 'Copiado' : 'Compartir')}
-      </button>
-    </div>
+    <>
+      <style>{`@media(max-width:480px){.share-btn-label{display:none !important}}`}</style>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 6 : 8, alignItems: 'center' }}>
+        {!compact && <span className="share-btn-label" style={{ color: '#64748b', fontSize: 12 }}>Compartir:</span>}
+        <a
+          href={twitterUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...btnBase, background: '#000000' }}
+          onMouseOver={e => handleHover(e, true)}
+          onMouseOut={e => handleHover(e, false)}
+        >
+          <XIcon /><span className="share-btn-label">X</span>
+        </a>
+        <a
+          href={facebookUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...btnBase, background: '#1877F2' }}
+          onMouseOver={e => handleHover(e, true)}
+          onMouseOut={e => handleHover(e, false)}
+        >
+          <FacebookIcon /><span className="share-btn-label">Facebook</span>
+        </a>
+        <a
+          href={whatsappUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...btnBase, background: '#25D366' }}
+          onMouseOver={e => handleHover(e, true)}
+          onMouseOut={e => handleHover(e, false)}
+        >
+          <WhatsAppIcon /><span className="share-btn-label">WhatsApp</span>
+        </a>
+        <button
+          onClick={handleCopy}
+          style={{ ...btnBase, background: copied ? '#22c55e' : '#64748b' }}
+          onMouseOver={e => handleHover(e, true)}
+          onMouseOut={e => handleHover(e, false)}
+          title="Compartir via otras apps"
+        >
+          {copied ? <CheckIcon /> : <ShareIcon />}
+          <span className="share-btn-label">{copied ? 'Copiado' : 'Compartir'}</span>
+        </button>
+      </div>
+    </>
   );
 }

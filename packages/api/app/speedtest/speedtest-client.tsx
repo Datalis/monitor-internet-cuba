@@ -367,7 +367,7 @@ export default function SpeedTestClient() {
                 Jitter: {result.jitter_ms} ms
               </div>
             )}
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center' }}>
               <ShareButtons
                 text={`Mi velocidad de internet en Cuba: \u2B07 ${formatSpeed(result.download_mbps).value} ${formatSpeed(result.download_mbps).unit} \u2B06 ${formatSpeed(result.upload_mbps).value} ${formatSpeed(result.upload_mbps).unit} | Latencia: ${result.latency_ms} ms. Prueba la tuya:`}
                 url={`https://internet.cubapk.com/speedtest?dl=${formatSpeed(result.download_mbps).value}&ul=${formatSpeed(result.upload_mbps).value}&lat=${result.latency_ms}`}
