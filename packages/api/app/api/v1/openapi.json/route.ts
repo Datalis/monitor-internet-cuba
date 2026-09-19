@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { CORS_HEADERS } from '@/lib/apiAuth';
 import { PROVINCES } from '@/lib/provinces';
-import { DEFAULT_RANGE_DAYS, DEFAULT_TIMEZONE, MAX_RANGE_DAYS, RETENTION_DAYS } from '@/lib/speedtestApi';
+import { DEFAULT_RANGE_DAYS, DEFAULT_TIMEZONE, MAX_RANGE_DAYS } from '@/lib/speedtestApi';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -80,7 +80,8 @@ export async function GET() {
         'Every measurement comes from a browser speed test run by a visitor of https://internet.cubapk.com',
         'from a Cuban network. Tests are anonymous: no IP address is stored, only a salted hash used for rate limiting.',
         '',
-        `Raw measurements are retained for ${RETENTION_DAYS} days, so a range older than that returns empty buckets.`,
+        'Raw measurements are retained indefinitely. The series starts on the date reported as `dataset.first_test` by /api/v1/meta;',
+        'a range older than that returns empty buckets.',
         '',
         'A project by CubaPK and elToque.',
       ].join('\n'),
@@ -224,7 +225,7 @@ export async function GET() {
             to: { type: 'string', format: 'date-time', description: 'Exclusive upper bound.' },
             timezone: { type: 'string' },
             include_timed_out: { type: 'boolean' },
-            retention_days: { type: 'integer' },
+            retention_days: { type: 'integer', nullable: true, description: 'null = sin limite de retencion' },
             generated_at: { type: 'string', format: 'date-time' },
           },
         },

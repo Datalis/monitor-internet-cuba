@@ -3,8 +3,12 @@ import { PROVINCE_IDS, PROVINCE_NAMES } from './provinces';
 export const DEFAULT_TIMEZONE = 'America/Havana';
 export const DEFAULT_RANGE_DAYS = 7;
 export const MAX_RANGE_DAYS = 366;
-/** Time-series retention configured in mongo/init.js. */
-export const RETENTION_DAYS = 90;
+/**
+ * Retencion de la serie temporal. `null` = sin limite: no hay TTL en Mongo y los
+ * datos historicos se conservan indefinidamente. Ver mongo/README.md.
+ * El inicio real de la serie se expone como `first_test` en /api/v1/meta.
+ */
+export const RETENTION_DAYS: number | null = null;
 
 export type RangeError = { code: string; message: string };
 

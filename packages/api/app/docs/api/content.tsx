@@ -343,7 +343,7 @@ const EN: Dict = {
               ['Coverage', 'All 16 provinces (including the special municipality Isla de la Juventud)'],
               [
                 'Retention',
-                '90 days. Raw measurements are deleted automatically after that, so an older range returns empty buckets.',
+                'Unlimited. Raw measurements are kept indefinitely. The series starts on 2026-06-20; an earlier range returns empty buckets.',
               ],
               ['Updates', 'Real time: a test appears in the API as soon as it is stored'],
               ['Volume', 'On the order of tens of tests per day nationwide'],
@@ -435,7 +435,7 @@ GET /api/v1/speedtests/provinces?from=2026-08-01&to=2026-08-31`}</Code>
     "to": "2026-09-16T04:00:00.000Z",
     "timezone": "America/Havana",
     "include_timed_out": false,
-    "retention_days": 90,
+    "retention_days": null,
     "generated_at": "2026-09-19T14:02:11.401Z",
     "provinces": 16
   },
@@ -917,7 +917,7 @@ const ES: Dict = {
               ['Cobertura', 'Las 16 provincias (incluye el municipio especial Isla de la Juventud)'],
               [
                 'Retención',
-                '90 días. Las mediciones crudas se eliminan automáticamente pasado ese plazo, así que un rango más antiguo devuelve buckets vacíos.',
+                'Ilimitada. Las mediciones crudas se conservan indefinidamente. La serie comienza el 2026-06-20; un rango anterior devuelve buckets vacíos.',
               ],
               ['Actualización', 'En tiempo real: un test aparece en la API en cuanto se guarda'],
               ['Volumen', 'Del orden de decenas de tests por día a escala nacional'],
@@ -1011,7 +1011,7 @@ GET /api/v1/speedtests/provinces?from=2026-08-01&to=2026-08-31`}</Code>
     "to": "2026-09-16T04:00:00.000Z",
     "timezone": "America/Havana",
     "include_timed_out": false,
-    "retention_days": 90,
+    "retention_days": null,
     "generated_at": "2026-09-19T14:02:11.401Z",
     "provinces": 16
   },
