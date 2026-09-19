@@ -1,26 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
+import { PROVINCES } from '@/lib/provinces';
 
 export const dynamic = 'force-dynamic';
 
-const PROVINCES = [
-  { id: 'PRI', name: 'Pinar del Río' },
-  { id: 'ART', name: 'Artemisa' },
-  { id: 'HAB', name: 'La Habana' },
-  { id: 'MAY', name: 'Mayabeque' },
-  { id: 'MAT', name: 'Matanzas' },
-  { id: 'CFG', name: 'Cienfuegos' },
-  { id: 'VCL', name: 'Villa Clara' },
-  { id: 'SSP', name: 'Sancti Spíritus' },
-  { id: 'CAV', name: 'Ciego de Ávila' },
-  { id: 'CMG', name: 'Camagüey' },
-  { id: 'LTU', name: 'Las Tunas' },
-  { id: 'HOL', name: 'Holguín' },
-  { id: 'GRA', name: 'Granma' },
-  { id: 'SCU', name: 'Santiago de Cuba' },
-  { id: 'GTM', name: 'Guantánamo' },
-  { id: 'IJV', name: 'Isla de la Juventud' },
-];
 
 export async function GET() {
   const db = await getDb();

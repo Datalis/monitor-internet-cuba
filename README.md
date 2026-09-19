@@ -157,6 +157,39 @@ curl "http://localhost:3000/api/metrics?source=ooni&hours=24"
 curl "http://localhost:3000/api/outages"
 ```
 
+### API v1 para terceros (con API key)
+
+Además de los endpoints públicos, hay una API versionada y autenticada pensada para
+compartir con terceros los tests de velocidad agregados por provincia.
+
+**Documentación:** [internet.cubapk.com/docs/api](https://internet.cubapk.com/docs/api) ·
+**OpenAPI:** `/api/v1/openapi.json`
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `/api/v1/speedtests/provinces` | Agregados por provincia para un rango de fechas |
+| `/api/v1/speedtests/daily` | Serie diaria, por provincia o nacional |
+| `/api/v1/meta` | Catálogo de provincias y cobertura del dataset |
+| `/api/v1/openapi.json` | Especificación OpenAPI 3.0 (sin autenticación) |
+
+Parámetros comunes: `from`, `to`, `days`, `province`, `tz`, `include_timed_out`, `format=json|csv`.
+Sin parámetros devuelven los últimos 7 días.
+
+```bash
+curl -H "X-API-Key: TU_CLAVE" \
+  "https://internet.cubapk.com/api/v1/speedtests/provinces?from=2026-09-01&to=2026-09-15"
+```
+
+Las claves se configuran en `PUBLIC_API_KEYS` como pares `etiqueta:clave` separados por
+coma (ver `.env.example`). Para emitir una nueva:
+
+```bash
+echo "nombre-del-tercero:mic_live_$(openssl rand -hex 24)"
+```
+
+Añádela a `PUBLIC_API_KEYS` en el `.env` del servidor y reinicia `web-api`. Revocar una
+clave es borrarla de la lista y reiniciar.
+
 ## Fuentes de datos
 
 | Fuente | Datos | Frecuencia |

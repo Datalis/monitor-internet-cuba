@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { createHash } from 'crypto';
+import { PROVINCE_IDS } from '@/lib/provinces';
 
-const CUBA_PROVINCE_IDS = new Set([
-  'PRI', 'ART', 'HAB', 'MAY', 'MAT', 'CFG', 'VCL', 'SSP',
-  'CAV', 'CMG', 'LTU', 'HOL', 'GRA', 'SCU', 'GTM', 'IJV',
-]);
 
 // Known Cuban IP ranges (ETECSA AS27725)
 const CUBAN_RANGES = [
@@ -83,7 +80,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Validate province
-  const prov = typeof province_id === 'string' && CUBA_PROVINCE_IDS.has(province_id) ? province_id : null;
+  const prov = typeof province_id === 'string' && PROVINCE_IDS.has(province_id) ? province_id : null;
 
   // Hash IP for storage (privacy)
   const ipHash = createHash('sha256').update(ip + (process.env.IP_SALT || 'cuba-monitor')).digest('hex').slice(0, 16);
