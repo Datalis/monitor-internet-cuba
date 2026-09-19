@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
           { path: '/api/v1/meta', description: 'This document.' },
         ],
         documentation: 'https://internet.cubapk.com/docs/api',
+        documentation_es: 'https://internet.cubapk.com/docs/api/es',
       },
       auth.headers,
     );
