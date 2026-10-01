@@ -24,7 +24,7 @@ export const CUBA_PROVINCES: Province[] = [
   { id: 'IJV', name: 'Isla de la Juventud', lat: 21.711, lng: -82.831 },
 ];
 
-export type DataSource = 'ooni' | 'cloudflare' | 'ripe-stat' | 'ioda' | 'ookla' | 'mlab' | 'crowdsourced';
+export type DataSource = 'ooni' | 'cloudflare' | 'ripe-stat' | 'ioda' | 'ookla' | 'mlab' | 'crowdsourced' | 'etecsa-node';
 
 export interface NormalizedMetric {
   timestamp: Date;

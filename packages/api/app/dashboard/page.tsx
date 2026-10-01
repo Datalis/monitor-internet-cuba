@@ -68,6 +68,19 @@ interface CrowdStats {
   test_count: number;
 }
 
+interface EtecsaNode {
+  id: string;
+  name: string;
+  up: boolean | null;
+  last_check: string | null;
+  last_up: string | null;
+  latency_ms: number | null;
+  uptime_pct: number | null;
+  avg_latency_ms: number | null;
+  download_mbps: number | null;
+  avg_download_mbps: number | null;
+}
+
 interface SubScore { label: string; score: number; weight: number }
 
 function computeBlockingIndex(
@@ -195,13 +208,14 @@ export default function Dashboard() {
     mobile_median: { download_mbps: number; upload_mbps: number; latency_ms: number; rank: number; total_countries: number | null; month: string } | null;
     mobile_mean: { download_mbps: number; upload_mbps: number; latency_ms: number; rank: number; total_countries: number | null; month: string } | null;
   } | null>(null);
+  const [etecsaNodes, setEtecsaNodes] = useState<EtecsaNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOutageInfo, setShowOutageInfo] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
-        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes, notesRes, ooklaRes] = await Promise.all([
+        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes, notesRes, ooklaRes, etecsaRes] = await Promise.all([
           fetch('/api/outages?hours=48').then(r => r.json()),
           fetch('/api/blocking?days=15').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare&hours=24').then(r => r.json()),
@@ -210,6 +224,7 @@ export default function Dashboard() {
           fetch('/api/speedtest/stats?hours=168').then(r => r.json()).catch(() => null),
           fetch('/api/notes?limit=1').then(r => r.json()).catch(() => null),
           fetch('/api/speedtest-index').then(r => r.json()).catch(() => null),
+          fetch('/api/etecsa-nodes?hours=24').then(r => r.json()).catch(() => null),
         ]);
         setOutages(outRes);
         setBlocking(blockRes.data || []);
@@ -220,6 +235,7 @@ export default function Dashboard() {
         if (crowdRes?.by_province) setCrowdByProvince(crowdRes.by_province);
         if (notesRes?.data) setNotes(notesRes.data);
         if (ooklaRes?.latest) setOoklaIndex(ooklaRes.latest);
+        if (etecsaRes?.nodes) setEtecsaNodes(etecsaRes.nodes);
       } catch (err) {
         console.error('Failed to load data:', err);
       } finally {
@@ -465,6 +481,9 @@ export default function Dashboard() {
             <StatCard label="Visibilidad BGP" value={outages?.latest_ripe?.bgp_visibility_pct != null ? `${(outages.latest_ripe.bgp_visibility_pct * 100).toFixed(1)}%` : 'N/A'} sub="AS27725 (ETECSA)" hint="Que tan visible es la red de ETECSA para el resto de internet. Menos de 70% indica problemas serios de conectividad." />
           </div>
 
+          {/* Nodos speedtest de ETECSA (no entra en el Indice) */}
+          {etecsaNodes.some(n => n.last_check) && <EtecsaNodesCard nodes={etecsaNodes} />}
+
           {/* Resto de graficas */}
           <Suspense fallback={<p>Cargando graficos...</p>}>
             <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="rest" />
@@ -552,6 +571,7 @@ export default function Dashboard() {
                 <li><strong style={{ color: '#cbd5e1' }}>IODA (Georgia Tech)</strong> — Combina datos de BGP, traceroutes y DNS para detectar apagones de internet a nivel de pais. El score va de 0 (normal) a 1 (apagon total).</li>
                 <li><strong style={{ color: '#cbd5e1' }}>OONI</strong> — Tests de conectividad web ejecutados por voluntarios dentro de Cuba. Detectan si sitios especificos estan bloqueados o censurados.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>Speedtest Global Index (Ookla)</strong> — Medianas de velocidad movil y banda ancha fija para Cuba, basadas en millones de tests de Ookla Speedtest. Incluye ranking mundial.</li>
+                <li><strong style={{ color: '#cbd5e1' }}>Nodos speedtest de ETECSA</strong> — Medimos cada 10 minutos, desde un servidor fuera de Cuba, los nodos de <a href="http://speedtest.cd.etecsa.cu/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>speedtest.cd.etecsa.cu</a> en La Habana, Mayabeque y Las Tunas. Indica si la infraestructura de ETECSA responde y la latencia y capacidad de la ruta internacional hacia la isla, no la velocidad que recibe un usuario.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>Test de Velocidad</strong> — Datos crowdsourced de usuarios que ejecutan nuestro <a href="/speedtest" style={{ color: '#3b82f6' }}>test de velocidad</a> desde Cuba. Mide descarga, subida y latencia real.</li>
               </ul>
             </div>
@@ -687,6 +707,63 @@ function BlockingIndexGauge({ score, breakdown }: { score: number; breakdown: Su
       </div>
       <div style={{ marginTop: 12 }}>
         <ShareButtons text={shareText} url="https://internet.cubapk.com/indice" compact />
+      </div>
+    </div>
+  );
+}
+
+function EtecsaNodesCard({ nodes }: { nodes: EtecsaNode[] }) {
+  // Si el ultimo chequeo tiene mas de 30 min, el ETL no esta midiendo: no inferir estado
+  const STALE_MS = 30 * 60 * 1000;
+  const fmtTime = (t: string | null) => t
+    ? new Date(t).toLocaleString('es-CU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : 'nunca';
+
+  return (
+    <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ color: '#94a3b8', fontSize: 12 }}>NODOS SPEEDTEST DE ETECSA</div>
+        <a href="http://speedtest.cd.etecsa.cu/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: 11, textDecoration: 'none' }}>
+          speedtest.cd.etecsa.cu &rarr;
+        </a>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+        {nodes.map(n => {
+          const stale = !n.last_check || Date.now() - new Date(n.last_check).getTime() > STALE_MS;
+          const color = stale ? '#64748b' : n.up ? '#22c55e' : '#ef4444';
+          const status = stale ? 'Sin datos' : n.up ? 'Responde' : 'Sin respuesta';
+          return (
+            <div key={n.id} style={{ background: '#0f172a', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{n.name}</div>
+                <span style={{ fontSize: 11, fontWeight: 600, color, background: color + '18', padding: '2px 8px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: color }} />
+                  {status}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Latencia</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: '#e2e8f0' }}>{n.up && n.latency_ms != null ? n.latency_ms : '—'}<span style={{ fontSize: 10, color: '#64748b', fontWeight: 400 }}> ms</span></div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Descarga</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: '#3b82f6' }}>{n.download_mbps != null ? n.download_mbps.toFixed(1) : '—'}<span style={{ fontSize: 10, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
+                </div>
+                <div>
+                  <div style={{ color: '#64748b', fontSize: 11 }}>Disp. 24h</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: '#e2e8f0' }}>{n.uptime_pct != null ? n.uptime_pct.toFixed(0) : '—'}<span style={{ fontSize: 10, color: '#64748b', fontWeight: 400 }}> %</span></div>
+                </div>
+              </div>
+              {!stale && !n.up && (
+                <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 8 }}>Ultima respuesta: {fmtTime(n.last_up)}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ color: '#475569', fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>
+        Medido desde fuera de Cuba cada 10 min (descarga cada hora). Refleja si los servidores de ETECSA responden y la capacidad de la ruta internacional hacia ellos, no la velocidad de un usuario en Cuba. No forma parte del Indice de Apertura.
       </div>
     </div>
   );

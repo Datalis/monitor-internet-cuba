@@ -7,6 +7,7 @@ import { collectCloudflare } from './collectors/cloudflare.js';
 import { collectOokla } from './collectors/ookla.js';
 import { collectMlab } from './collectors/mlab.js';
 import { collectSpeedtestIndex } from './collectors/speedtest-index.js';
+import { collectEtecsaNodes } from './collectors/etecsa-nodes.js';
 import { generateWeeklyNote, checkAndReportOutage } from './collectors/ai-notes.js';
 
 async function main() {
@@ -21,6 +22,7 @@ async function main() {
   await runSafe('Cloudflare', collectCloudflare);
   await runSafe('M-Lab', collectMlab);
   await runSafe('Speedtest Index', collectSpeedtestIndex);
+  await runSafe('ETECSA Nodes', () => collectEtecsaNodes({ throughput: true }));
 
   // RIPE Stat: every 5 minutes (most critical for outage detection)
   cron.schedule('*/5 * * * *', () => runSafe('RIPE Stat', collectRipeStat));
@@ -39,6 +41,10 @@ async function main() {
 
   // Speedtest Global Index: daily at 4am (monthly data, rarely changes)
   cron.schedule('0 4 * * *', () => runSafe('Speedtest Index', collectSpeedtestIndex));
+
+  // Nodos speedtest de ETECSA: ping cada 10 min, descarga solo en la pasada de :00
+  cron.schedule('*/10 * * * *', () => runSafe('ETECSA Nodes', () =>
+    collectEtecsaNodes({ throughput: new Date().getMinutes() < 10 })));
 
   // Speed/Latency (Cloudflare Radar): every 6 hours
   cron.schedule('0 */6 * * *', () => runSafe('Speed', collectMlab));
