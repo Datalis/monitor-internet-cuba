@@ -202,12 +202,6 @@ export default function Dashboard() {
   const [crowdStats, setCrowdStats] = useState<CrowdStats | null>(null);
   const [crowdByProvince, setCrowdByProvince] = useState<{ province_id: string; avg_download: number; avg_upload: number; avg_latency: number; test_count: number }[]>([]);
   const [notes, setNotes] = useState<{ type: string; content: string; generated_at: string }[]>([]);
-  const [ooklaIndex, setOoklaIndex] = useState<{
-    fixed_median: { download_mbps: number; upload_mbps: number; latency_ms: number; rank: number; total_countries: number | null; month: string } | null;
-    fixed_mean: { download_mbps: number; upload_mbps: number; latency_ms: number; rank: number; total_countries: number | null; month: string } | null;
-    mobile_median: { download_mbps: number; upload_mbps: number; latency_ms: number; rank: number; total_countries: number | null; month: string } | null;
-    mobile_mean: { download_mbps: number; upload_mbps: number; latency_ms: number; rank: number; total_countries: number | null; month: string } | null;
-  } | null>(null);
   const [etecsaNodes, setEtecsaNodes] = useState<EtecsaNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOutageInfo, setShowOutageInfo] = useState(false);
@@ -215,7 +209,7 @@ export default function Dashboard() {
   useEffect(() => {
     async function load() {
       try {
-        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes, notesRes, ooklaRes, etecsaRes] = await Promise.all([
+        const [outRes, blockRes, cfRes, summaryRes, mlabRes, crowdRes, notesRes, etecsaRes] = await Promise.all([
           fetch('/api/outages?hours=48').then(r => r.json()),
           fetch('/api/blocking?days=15').then(r => r.json()),
           fetch('/api/metrics?source=cloudflare&hours=24').then(r => r.json()),
@@ -223,7 +217,6 @@ export default function Dashboard() {
           fetch('/api/metrics?source=mlab&hours=336').then(r => r.json()),
           fetch('/api/speedtest/stats?hours=168').then(r => r.json()).catch(() => null),
           fetch('/api/notes?limit=1').then(r => r.json()).catch(() => null),
-          fetch('/api/speedtest-index').then(r => r.json()).catch(() => null),
           fetch('/api/etecsa-nodes?hours=24').then(r => r.json()).catch(() => null),
         ]);
         setOutages(outRes);
@@ -234,7 +227,6 @@ export default function Dashboard() {
         if (crowdRes?.summary) setCrowdStats(crowdRes.summary);
         if (crowdRes?.by_province) setCrowdByProvince(crowdRes.by_province);
         if (notesRes?.data) setNotes(notesRes.data);
-        if (ooklaRes?.latest) setOoklaIndex(ooklaRes.latest);
         if (etecsaRes?.nodes) setEtecsaNodes(etecsaRes.nodes);
       } catch (err) {
         console.error('Failed to load data:', err);
@@ -489,37 +481,6 @@ export default function Dashboard() {
             <Charts blocking={blocking} traffic={traffic} outages={outages} mlab={mlab} section="rest" />
           </Suspense>
 
-          {/* Speedtest Global Index (Ookla) — solo banda ancha fija */}
-          {ooklaIndex?.fixed_median && (
-            <div style={{ background: '#1e293b', borderRadius: 12, padding: 16, marginTop: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ color: '#94a3b8', fontSize: 12 }}>SPEEDTEST GLOBAL INDEX (Ookla)</div>
-                <a href="https://www.speedtest.net/global-index/cuba" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', fontSize: 11, textDecoration: 'none' }}>
-                  speedtest.net &rarr;
-                </a>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Descarga</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#3b82f6' }}>{ooklaIndex.fixed_median.download_mbps.toFixed(1)}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Subida</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#8b5cf6' }}>{ooklaIndex.fixed_median.upload_mbps.toFixed(2)}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> Mbps</span></div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Latencia</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0' }}>{ooklaIndex.fixed_median.latency_ms}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> ms</span></div>
-                </div>
-                <div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>Ranking</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>#{ooklaIndex.fixed_median.rank}<span style={{ fontSize: 11, color: '#64748b', fontWeight: 400 }}> de {ooklaIndex.fixed_median.total_countries || '~200'}</span></div>
-                </div>
-              </div>
-              <div style={{ color: '#475569', fontSize: 11, marginTop: 10 }}>Banda ancha fija, mediana mensual ({ooklaIndex.fixed_median.month}). Fuente: Speedtest Global Index.</div>
-            </div>
-          )}
-
           {/* Notas de IA */}
           {notes.length > 0 && (
             <div style={{ background: '#1e293b', borderRadius: 12, padding: '20px 24px', marginTop: 24 }}>
@@ -570,7 +531,6 @@ export default function Dashboard() {
                 <li><strong style={{ color: '#cbd5e1' }}>RIPE Stat (BGP)</strong> — Mide cuantas redes en el mundo pueden &quot;ver&quot; las IPs de ETECSA (AS27725). Si la visibilidad cae, Cuba se esta desconectando del internet global.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>IODA (Georgia Tech)</strong> — Combina datos de BGP, traceroutes y DNS para detectar apagones de internet a nivel de pais. El score va de 0 (normal) a 1 (apagon total).</li>
                 <li><strong style={{ color: '#cbd5e1' }}>OONI</strong> — Tests de conectividad web ejecutados por voluntarios dentro de Cuba. Detectan si sitios especificos estan bloqueados o censurados.</li>
-                <li><strong style={{ color: '#cbd5e1' }}>Speedtest Global Index (Ookla)</strong> — Medianas de velocidad movil y banda ancha fija para Cuba, basadas en millones de tests de Ookla Speedtest. Incluye ranking mundial.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>Nodos speedtest de ETECSA</strong> — Medimos cada 10 minutos, desde un servidor fuera de Cuba, los nodos de <a href="http://speedtest.cd.etecsa.cu/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>speedtest.cd.etecsa.cu</a> en La Habana, Mayabeque y Las Tunas. Indica si la infraestructura de ETECSA responde y la latencia y capacidad de la ruta internacional hacia la isla, no la velocidad que recibe un usuario.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>Test de Velocidad</strong> — Datos crowdsourced de usuarios que ejecutan nuestro <a href="/speedtest" style={{ color: '#3b82f6' }}>test de velocidad</a> desde Cuba. Mide descarga, subida y latencia real.</li>
               </ul>

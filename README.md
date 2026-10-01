@@ -35,7 +35,7 @@ Un proyecto colaborativo entre [CubaPK](https://cubapk.com) y [elToque](https://
                          │
             Fuentes externas de datos:
             RIPE Stat · IODA · OONI
-            Cloudflare Radar · M-Lab · Ookla
+            Cloudflare Radar · M-Lab · ETECSA
 ```
 
 ### Estructura del proyecto
