@@ -6,6 +6,7 @@ import { collectOoni } from './collectors/ooni.js';
 import { collectCloudflare } from './collectors/cloudflare.js';
 import { collectMlab } from './collectors/mlab.js';
 import { collectEtecsaNodes } from './collectors/etecsa-nodes.js';
+import { collectOpenCellid } from './collectors/opencellid.js';
 import { generateWeeklyNote, checkAndReportOutage } from './collectors/ai-notes.js';
 
 async function main() {
@@ -20,6 +21,7 @@ async function main() {
   await runSafe('Cloudflare', collectCloudflare);
   await runSafe('M-Lab', collectMlab);
   await runSafe('ETECSA Nodes', () => collectEtecsaNodes({ throughput: true }));
+  await runSafe('OpenCelliD', collectOpenCellid);
 
   // RIPE Stat: every 5 minutes (most critical for outage detection)
   cron.schedule('*/5 * * * *', () => runSafe('RIPE Stat', collectRipeStat));
@@ -36,6 +38,9 @@ async function main() {
   // Nodos speedtest de ETECSA: ping cada 10 min, descarga solo en la pasada de :00
   cron.schedule('*/10 * * * *', () => runSafe('ETECSA Nodes', () =>
     collectEtecsaNodes({ throughput: new Date().getMinutes() < 10 })));
+
+  // Celdas de ETECSA (OpenCelliD): una vez al dia, el dump se regenera de madrugada
+  cron.schedule('15 4 * * *', () => runSafe('OpenCelliD', collectOpenCellid));
 
   // Speed/Latency (Cloudflare Radar): every 6 hours
   cron.schedule('0 */6 * * *', () => runSafe('Speed', collectMlab));

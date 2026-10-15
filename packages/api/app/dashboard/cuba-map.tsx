@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
+
+const CellsMap = lazy(() => import('./cells-map'));
 
 const CUBA_PATHS: { id: string; name: string; d: string }[] = [
   { id: "HAB", name: "La Habana", d: "M178.7,67.1L189.8,60.2L194.0,62.7L192.3,59.9L196.3,58.4L211.8,58.1L212.6,60.1L211.2,66.8L202.2,66.2L204.1,71.0L200.4,74.0L186.6,75.2L181.1,69.7L182.3,65.5L178.7,67.1Z" },
@@ -21,7 +23,7 @@ const CUBA_PATHS: { id: string; name: string; d: string }[] = [
   { id: "MAY", name: "Mayabeque", d: "M186.6,75.2L200.4,74.0L204.1,71.0L202.2,66.2L211.2,66.8L211.1,58.8L213.3,57.6L241.8,60.0L242.9,66.2L241.1,65.2L237.0,72.8L242.2,76.4L241.0,82.5L245.2,86.9L243.2,89.9L249.5,92.9L247.9,98.1L244.6,101.8L228.2,94.1L211.2,95.8L196.3,92.7L185.5,93.7L184.0,81.8L186.6,75.2Z" },
 ];
 
-interface ProvinceData {
+export interface ProvinceData {
   province_id: string;
   avg_download: number;
   avg_upload: number;
@@ -29,7 +31,7 @@ interface ProvinceData {
   test_count: number;
 }
 
-function speedColor(mbps: number | undefined): string {
+export function speedColor(mbps: number | undefined): string {
   if (mbps == null) return '#1e293b';
   if (mbps >= 5) return '#22c55e';
   if (mbps >= 2) return '#3b82f6';
@@ -40,12 +42,32 @@ function speedColor(mbps: number | undefined): string {
 export default function CubaSpeedMap({ data }: { data: ProvinceData[] }) {
   const [hover, setHover] = useState<ProvinceData | null>(null);
   const [hoverName, setHoverName] = useState('');
+  const [showCells, setShowCells] = useState(false);
 
   const dataMap = new Map(data.map(d => [d.province_id, d]));
 
   return (
     <div style={{ background: '#1e293b', borderRadius: 12, padding: '16px 16px 12px' }}>
-      <div style={{ color: '#94a3b8', fontSize: 12, marginBottom: 8 }}>Velocidad por Provincia (Crowdsourced)</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+        <div style={{ color: '#94a3b8', fontSize: 12 }}>
+          {showCells ? 'Antenas móviles de ETECSA y velocidad por provincia' : 'Velocidad por Provincia (Crowdsourced)'}
+        </div>
+        <label
+          title="Muestra sobre el mapa las antenas de telefonía móvil de ETECSA (4G, 3G y 2G) detectadas por colaboradores de OpenCelliD. Su ubicación es aproximada."
+          style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6, color: '#94a3b8', fontSize: 12, cursor: 'pointer' }}
+        >
+          <input type="checkbox" checked={showCells} onChange={e => setShowCells(e.target.checked)} style={{ marginTop: 2 }} />
+          <span>
+            Mostrar antenas móviles de ETECSA (4G · 3G · 2G)
+            <span style={{ display: 'block', color: '#64748b', fontSize: 10 }}>Ubicación aproximada · datos de OpenCelliD</span>
+          </span>
+        </label>
+      </div>
+      {showCells ? (
+        <Suspense fallback={<p style={{ color: '#64748b', fontSize: 12 }}>Cargando mapa de celdas...</p>}>
+          <CellsMap data={data} />
+        </Suspense>
+      ) : (
       <div style={{ position: 'relative' }}>
         <svg viewBox="0 0 800 300" style={{ width: '100%', height: 'auto' }}>
           {CUBA_PATHS.map(prov => {
@@ -85,6 +107,7 @@ export default function CubaSpeedMap({ data }: { data: ProvinceData[] }) {
           </div>
         )}
       </div>
+      )}
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8, fontSize: 10, color: '#64748b' }}>
         <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#ef4444', marginRight: 4 }} />&lt;1 Mbps</span>
         <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#f59e0b', marginRight: 4 }} />1-2 Mbps</span>
