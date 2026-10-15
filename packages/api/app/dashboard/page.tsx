@@ -25,15 +25,50 @@ interface CfAlert {
   linked_url?: string;
 }
 
+interface IodaSignal {
+  datasource: string;
+  level: string;
+  since: string;
+  value: number;
+  baseline: number;
+  drop: number;
+}
+
 interface OutageData {
   active_outages: number;
   active_cf_alerts: number;
-  latest_ioda: { outage_score: number; outage_detected: boolean; timestamp: string } | null;
+  latest_ioda: {
+    outage_score: number;
+    outage_detected: boolean;
+    timestamp: string;
+    outage_since?: string | null;
+    signals?: IodaSignal[];
+  } | null;
   latest_ripe: { bgp_prefix_count: number; bgp_visibility_pct: number; timestamp: string } | null;
   latest_cf_alert: CfAlert | null;
   cloudflare_alerts: CfAlert[];
   ioda: Metric[];
   ripe: Metric[];
+}
+
+// Fuentes de IODA en lenguaje llano
+const IODA_SIGNAL_ES: Record<string, string> = {
+  'ping-slash24': 'sondeo activo de redes',
+  bgp: 'rutas BGP',
+  'merit-nt': 'telescopio de red',
+  gtr: 'tráfico de Google',
+};
+
+// "IODA detecta una caida activa desde las 18:20: el sondeo activo de redes esta un 59% por debajo de lo normal."
+function iodaSummary(ioda: OutageData['latest_ioda']): string {
+  if (!ioda) return 'IODA ha detectado una interrupción activa.';
+  const worst = [...(ioda.signals || [])].sort((a, b) => b.drop - a.drop)[0];
+  const since = ioda.outage_since
+    ? ` desde las ${new Date(ioda.outage_since).toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Havana' })} (hora de Cuba)`
+    : '';
+  if (!worst) return `IODA detecta una caída activa${since}.`;
+  const name = IODA_SIGNAL_ES[worst.datasource] || worst.datasource;
+  return `IODA detecta una caída activa${since}: el ${name} está un ${Math.round(worst.drop * 100)}% por debajo de lo normal.`;
 }
 
 const OUTAGE_CAUSE_ES: Record<string, string> = {
@@ -302,7 +337,7 @@ export default function Dashboard() {
                 )}
                 <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>
                   {isOutage
-                    ? `IODA ha detectado una interrupcion activa. Score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}`
+                    ? iodaSummary(outages?.latest_ioda ?? null)
                     : hasCfAlert && cfAlert
                     ? `${cfAlert.outage_cause ? `Causa: ${OUTAGE_CAUSE_ES[cfAlert.outage_cause] || cfAlert.outage_cause}` : cfAlert.event_type || 'Alerta activa'}${cfAlert.outage_type ? ` — ${OUTAGE_TYPE_ES[cfAlert.outage_type] || cfAlert.outage_type}` : ''}${cfStartTime ? ` — Desde ${cfStartTime}` : ''}`
                     : trafficDrop
@@ -313,7 +348,7 @@ export default function Dashboard() {
                   <ShareButtons
                     compact
                     text={isOutage
-                      ? `\u{1F6A8} Interrupción de internet detectada en Cuba. IODA score: ${outages?.latest_ioda?.outage_score?.toFixed(3) ?? 'N/A'}. Monitorea en tiempo real:`
+                      ? `\u{1F6A8} Interrupción de internet detectada en Cuba: las redes que responden cayeron un ${Math.round((outages?.latest_ioda?.outage_score ?? 0) * 100)}% según IODA. Monitorea en tiempo real:`
                       : cfAlertIsOutage
                       ? `\u{1F6A8} Interrupción verificada por Cloudflare Radar en Cuba${cfAlert?.outage_cause ? ` (${OUTAGE_CAUSE_ES[cfAlert.outage_cause]?.toLowerCase() || cfAlert.outage_cause})` : ''}. Monitorea en tiempo real:`
                       : hasCfAlert
@@ -529,7 +564,7 @@ export default function Dashboard() {
               <ul style={{ paddingLeft: 20, margin: 0 }}>
                 <li><strong style={{ color: '#cbd5e1' }}>Cloudflare Radar</strong> — Volumen relativo de trafico HTTP desde Cuba (0-100). Un score bajo indica que hay menos trafico de lo normal, posible senal de interrupcion.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>RIPE Stat (BGP)</strong> — Mide cuantas redes en el mundo pueden &quot;ver&quot; las IPs de ETECSA (AS27725). Si la visibilidad cae, Cuba se esta desconectando del internet global.</li>
-                <li><strong style={{ color: '#cbd5e1' }}>IODA (Georgia Tech)</strong> — Combina datos de BGP, traceroutes y DNS para detectar apagones de internet a nivel de pais. El score va de 0 (normal) a 1 (apagon total).</li>
+                <li><strong style={{ color: '#cbd5e1' }}>IODA (Georgia Tech)</strong> — Combina rutas BGP, sondeo activo de redes y tráfico de fondo para detectar apagones de internet a nivel de país. Mientras IODA mantiene una alerta activa, el score mide cuánto cayó la señal más afectada: 0 (normal) a 1 (ninguna red responde).</li>
                 <li><strong style={{ color: '#cbd5e1' }}>OONI</strong> — Tests de conectividad web ejecutados por voluntarios dentro de Cuba. Detectan si sitios especificos estan bloqueados o censurados.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>Nodos speedtest de ETECSA</strong> — Medimos cada 10 minutos, desde un servidor fuera de Cuba, los nodos de <a href="http://speedtest.cd.etecsa.cu/" target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>speedtest.cd.etecsa.cu</a> en La Habana, Mayabeque y Las Tunas. Indica si la infraestructura de ETECSA responde y la latencia y capacidad de la ruta internacional hacia la isla, no la velocidad que recibe un usuario.</li>
                 <li><strong style={{ color: '#cbd5e1' }}>Test de Velocidad</strong> — Datos crowdsourced de usuarios que ejecutan nuestro <a href="/speedtest" style={{ color: '#3b82f6' }}>test de velocidad</a> desde Cuba. Mide descarga, subida y latencia real.</li>
